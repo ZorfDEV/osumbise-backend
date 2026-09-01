@@ -1,0 +1,390 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================================
+// SAAS / MULTI-TENANT
+// ============================================================
+
+model Organization {
+  id             String          @id @default(uuid())
+  name           String
+  establishments Establishment[]
+  users          User[]
+  subscription   Subscription?
+  auditLogs      AuditLog[]
+  createdAt      DateTime        @default(now()) @map("created_at")
+  updatedAt      DateTime        @updatedAt @map("updated_at")
+
+  @@map("organizations")
+}
+
+model Plan {
+  id                String         @id @default(uuid())
+  name              String // Starter, Business, Enterprise
+  price             Decimal        @db.Decimal(12, 2)
+  maxEstablishments Int            @map("max_establishments")
+  maxUsers          Int            @map("max_users")
+  subscriptions     Subscription[]
+
+  @@map("plans")
+}
+
+enum SubscriptionStatus {
+  TRIAL
+  ACTIVE
+  PAST_DUE
+  CANCELLED
+}
+
+model Subscription {
+  id               String             @id @default(uuid())
+  organizationId   String             @unique @map("organization_id")
+  organization     Organization       @relation(fields: [organizationId], references: [id])
+  planId           String             @map("plan_id")
+  plan             Plan               @relation(fields: [planId], references: [id])
+  status           SubscriptionStatus @default(TRIAL)
+  currentPeriodEnd DateTime           @map("current_period_end")
+  createdAt        DateTime           @default(now()) @map("created_at")
+
+  @@map("subscriptions")
+}
+
+// ============================================================
+// ÉTABLISSEMENTS & UTILISATEURS
+// ============================================================
+
+enum EstablishmentType {
+  BAR
+  RESTAURANT
+  HOTEL
+}
+
+model Establishment {
+  id             String            @id @default(uuid())
+  organizationId String            @map("organization_id")
+  organization   Organization      @relation(fields: [organizationId], references: [id])
+  name           String
+  type           EstablishmentType
+  address        String?
+  users          User[]
+  categories     Category[]
+  products       Product[]
+  tables         DiningTable[]
+  orders         Order[]
+  cashRegisters  CashRegister[]
+  createdAt      DateTime          @default(now()) @map("created_at")
+  updatedAt      DateTime          @updatedAt @map("updated_at")
+
+  @@map("establishments")
+}
+
+// Correspond aux rôles du cahier des charges (section 4)
+enum Role {
+  OWNER // Propriétaire
+  ADMIN // Administrateur / Manager
+  CASHIER // Caissier
+  SERVER // Serveur
+  STOCK_KEEPER // Magasinier
+  COOK // Cuisinier
+}
+
+model User {
+  id                 String          @id @default(uuid())
+  organizationId     String          @map("organization_id")
+  organization       Organization    @relation(fields: [organizationId], references: [id])
+  // null = accès à tous les établissements de l'organisation (cas du propriétaire)
+  establishmentId    String?         @map("establishment_id")
+  establishment      Establishment?  @relation(fields: [establishmentId], references: [id])
+  name               String
+  email              String          @unique
+  passwordHash       String          @map("password_hash")
+  role               Role
+  isActive           Boolean         @default(true) @map("is_active")
+  orders             Order[]
+  stockMovements     StockMovement[]
+  cashSessionsOpened CashSession[]   @relation("OpenedBy")
+  cashSessionsClosed CashSession[]   @relation("ClosedBy")
+  auditLogs          AuditLog[]
+  createdAt          DateTime        @default(now()) @map("created_at")
+  updatedAt          DateTime        @updatedAt @map("updated_at")
+
+  @@map("users")
+}
+
+// ============================================================
+// PRODUITS, CATÉGORIES & RECETTES
+// ============================================================
+
+model Category {
+  id              String        @id @default(uuid())
+  establishmentId String        @map("establishment_id")
+  establishment   Establishment @relation(fields: [establishmentId], references: [id])
+  name            String
+  products        Product[]
+  createdAt       DateTime      @default(now()) @map("created_at")
+
+  @@map("categories")
+}
+
+enum Unit {
+  UNIT
+  G
+  KG
+  ML
+  CL
+  L
+}
+
+model Product {
+  id              String        @id @default(uuid())
+  establishmentId String        @map("establishment_id")
+  establishment   Establishment @relation(fields: [establishmentId], references: [id])
+  categoryId      String        @map("category_id")
+  category        Category      @relation(fields: [categoryId], references: [id])
+  name            String
+  sku             String?
+  sellingPrice    Decimal       @map("selling_price") @db.Decimal(12, 2)
+  cost            Decimal       @default(0) @db.Decimal(12, 2)
+  tva             Decimal       @default(0) @db.Decimal(5, 2)
+  unit            Unit          @default(UNIT)
+  stockCurrent    Decimal       @default(0) @map("stock_current") @db.Decimal(10, 3)
+  stockMin        Decimal       @default(0) @map("stock_min") @db.Decimal(10, 3)
+  image           String?
+  isActive        Boolean       @default(true) @map("is_active")
+
+  // Recette : si ce produit est composé d'autres produits (ex. Poulet braisé -> Riz, Huile...)
+  recipeItems    RecipeItem[]    @relation("ComposedProduct")
+  // Dans quelles recettes ce produit est utilisé comme ingrédient
+  usedInRecipes  RecipeItem[]    @relation("IngredientProduct")
+  orderItems     OrderItem[]
+  stockMovements StockMovement[]
+  createdAt      DateTime        @default(now()) @map("created_at")
+  updatedAt      DateTime        @updatedAt @map("updated_at")
+
+  @@map("products")
+}
+
+model RecipeItem {
+  id                  String  @id @default(uuid())
+  productId           String  @map("product_id") // le produit composé (ex. Poulet braisé)
+  product             Product @relation("ComposedProduct", fields: [productId], references: [id])
+  ingredientProductId String  @map("ingredient_product_id") // le produit consommé (ex. Riz)
+  ingredientProduct   Product @relation("IngredientProduct", fields: [ingredientProductId], references: [id])
+  quantity            Decimal @db.Decimal(10, 3) // dans l'unité de ingredientProduct
+
+  @@unique([productId, ingredientProductId])
+  @@map("recipe_items")
+}
+
+// ============================================================
+// TABLES & COMMANDES (POS)
+// ============================================================
+
+enum TableStatus {
+  FREE // 🟢 Libre
+  OCCUPIED // 🔴 Occupée
+  PENDING_ORDER // 🟠 Commande en attente
+  BILL_REQUESTED // 🔵 Addition demandée
+}
+
+model DiningTable {
+  id              String        @id @default(uuid())
+  establishmentId String        @map("establishment_id")
+  establishment   Establishment @relation(fields: [establishmentId], references: [id])
+  label           String // ex. "T01"
+  zone            String?
+  status          TableStatus   @default(FREE)
+  orders          Order[]
+
+  @@map("tables")
+}
+
+// Correspond exactement au workflow décrit section 8 du cahier des charges
+enum OrderStatus {
+  BROUILLON
+  EN_ATTENTE
+  EN_PREPARATION
+  PRETE
+  SERVIE
+  PAYEE
+  FERMEE
+  ANNULEE
+}
+
+model Order {
+  id              String        @id @default(uuid())
+  establishmentId String        @map("establishment_id")
+  establishment   Establishment @relation(fields: [establishmentId], references: [id])
+  tableId         String?       @map("table_id")
+  table           DiningTable?  @relation(fields: [tableId], references: [id])
+  userId          String        @map("user_id") // serveur / caissier qui a créé la commande
+  user            User          @relation(fields: [userId], references: [id])
+  customerName    String?       @map("customer_name")
+  status          OrderStatus   @default(BROUILLON)
+  subtotal        Decimal       @default(0) @db.Decimal(12, 2)
+  discount        Decimal       @default(0) @db.Decimal(12, 2)
+  tax             Decimal       @default(0) @db.Decimal(12, 2)
+  total           Decimal       @default(0) @db.Decimal(12, 2)
+
+  items          OrderItem[]
+  payments       Payment[]
+  statusHistory  OrderStatusHistory[]
+  stockMovements StockMovement[]
+  cashMovements  CashMovement[]
+  createdAt      DateTime             @default(now()) @map("created_at")
+  updatedAt      DateTime             @updatedAt @map("updated_at")
+
+  @@map("orders")
+}
+
+model OrderItem {
+  id        String  @id @default(uuid())
+  orderId   String  @map("order_id")
+  order     Order   @relation(fields: [orderId], references: [id])
+  productId String  @map("product_id")
+  product   Product @relation(fields: [productId], references: [id])
+  quantity  Int
+  unitPrice Decimal @map("unit_price") @db.Decimal(12, 2) // prix figé au moment de la vente
+  note      String?
+
+  @@map("order_items")
+}
+
+model OrderStatusHistory {
+  id        String      @id @default(uuid())
+  orderId   String      @map("order_id")
+  order     Order       @relation(fields: [orderId], references: [id])
+  status    OrderStatus
+  changedAt DateTime    @default(now()) @map("changed_at")
+
+  @@map("order_status_history")
+}
+
+enum PaymentMethod {
+  CASH
+  CARD
+  MOBILE_MONEY
+  TRANSFER
+  CREDIT
+}
+
+model Payment {
+  id        String        @id @default(uuid())
+  orderId   String        @map("order_id")
+  order     Order         @relation(fields: [orderId], references: [id])
+  method    PaymentMethod
+  amount    Decimal       @db.Decimal(12, 2)
+  createdAt DateTime      @default(now()) @map("created_at")
+
+  @@map("payments")
+}
+
+// ============================================================
+// STOCK
+// ============================================================
+
+enum StockMovementType {
+  ENTREE
+  SORTIE_VENTE
+  PERTE
+  CASSE
+  AJUSTEMENT
+}
+
+model StockMovement {
+  id          String            @id @default(uuid())
+  productId   String            @map("product_id")
+  product     Product           @relation(fields: [productId], references: [id])
+  type        StockMovementType
+  quantity    Decimal           @db.Decimal(10, 3) // toujours positive ; le sens est donné par "type"
+  stockBefore Decimal           @map("stock_before") @db.Decimal(10, 3)
+  stockAfter  Decimal           @map("stock_after") @db.Decimal(10, 3)
+  orderId     String?           @map("order_id") // rempli si déclenché automatiquement par une vente
+  order       Order?            @relation(fields: [orderId], references: [id])
+  reason      String?
+  userId      String?           @map("user_id")
+  user        User?             @relation(fields: [userId], references: [id])
+  createdAt   DateTime          @default(now()) @map("created_at")
+
+  @@map("stock_movements")
+}
+
+// ============================================================
+// CAISSE
+// ============================================================
+
+model CashRegister {
+  id              String        @id @default(uuid())
+  establishmentId String        @map("establishment_id")
+  establishment   Establishment @relation(fields: [establishmentId], references: [id])
+  name            String // ex. "Caisse #01"
+  sessions        CashSession[]
+
+  @@map("cash_registers")
+}
+
+model CashSession {
+  id                 String       @id @default(uuid())
+  cashRegisterId     String       @map("cash_register_id")
+  cashRegister       CashRegister @relation(fields: [cashRegisterId], references: [id])
+  openedById         String       @map("opened_by_id")
+  openedBy           User         @relation("OpenedBy", fields: [openedById], references: [id])
+  openedAt           DateTime     @default(now()) @map("opened_at")
+  openingBalance     Decimal      @map("opening_balance") @db.Decimal(12, 2)
+  closedById         String?      @map("closed_by_id")
+  closedBy           User?        @relation("ClosedBy", fields: [closedById], references: [id])
+  closedAt           DateTime?    @map("closed_at")
+  theoreticalBalance Decimal?     @map("theoretical_balance") @db.Decimal(12, 2)
+  actualBalance      Decimal?     @map("actual_balance") @db.Decimal(12, 2)
+  discrepancy        Decimal?     @db.Decimal(12, 2)
+  movements          CashMovement[]
+
+  @@map("cash_sessions")
+}
+
+enum CashMovementType {
+  SALE_CASH
+  SALE_CARD
+  SALE_MOBILE_MONEY
+  EXPENSE
+  REFUND
+  ADJUSTMENT
+}
+
+model CashMovement {
+  id            String           @id @default(uuid())
+  cashSessionId String           @map("cash_session_id")
+  cashSession   CashSession      @relation(fields: [cashSessionId], references: [id])
+  type          CashMovementType
+  amount        Decimal          @db.Decimal(12, 2)
+  orderId       String?          @map("order_id")
+  order         Order?           @relation(fields: [orderId], references: [id])
+  note          String?
+  createdAt     DateTime         @default(now()) @map("created_at")
+
+  @@map("cash_movements")
+}
+
+// ============================================================
+// AUDIT (traçabilité des actions sensibles — section 23)
+// ============================================================
+
+model AuditLog {
+  id             String       @id @default(uuid())
+  organizationId String       @map("organization_id")
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  userId         String?      @map("user_id")
+  user           User?        @relation(fields: [userId], references: [id])
+  action         String // ex. "suppression produit commande #452"
+  entityType     String?      @map("entity_type")
+  entityId       String?      @map("entity_id")
+  createdAt      DateTime     @default(now()) @map("created_at")
+
+  @@map("audit_logs")
+}
