@@ -21,6 +21,16 @@ export const parseMonthRange = (monthParam?: string) => {
   return { start, end };
 };
 
+// yearParam au format "YYYY" ; par défaut l'année en cours
+export const parseYearRange = (yearParam?: string) => {
+  const year = yearParam ? Number(yearParam) : new Date().getFullYear();
+  const start = new Date(year, 0, 1);
+  start.setHours(0, 0, 0, 0);
+  const end = new Date(year + 1, 0, 1);
+  end.setHours(0, 0, 0, 0);
+  return { start, end };
+};
+
 interface ReportQuery {
   startDate?: string;
   endDate?: string;
@@ -28,7 +38,7 @@ interface ReportQuery {
   date?: string;
 }
 
-// Priorité : startDate/endDate explicites > period=month > jour unique (défaut)
+// Priorité : startDate/endDate explicites > period=year|month > jour unique (défaut)
 export const parseReportRange = (query: ReportQuery) => {
   const { startDate, endDate, period, date } = query;
 
@@ -39,6 +49,10 @@ export const parseReportRange = (query: ReportQuery) => {
     end.setHours(0, 0, 0, 0);
     end.setDate(end.getDate() + 1); // borne exclusive : inclut toute la journée de fin
     return { start, end };
+  }
+
+  if (period === 'year') {
+    return parseYearRange(date);
   }
 
   if (period === 'month') {

@@ -18,6 +18,8 @@ import reportRoutes from './routes/report.routes';
 import userRoutes from './routes/user.routes';
 import supplierRoutes from './routes/supplier.routes';
 import purchaseOrderRoutes from './routes/purchaseOrder.routes';
+import expenseCategoryRoutes from './routes/expenseCategory.routes';
+import expenseRoutes from './routes/expense.routes';
 
 const app = express();
 
@@ -55,6 +57,8 @@ app.use('/api/reports', reportRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/suppliers', supplierRoutes);
 app.use('/api/purchase-orders', purchaseOrderRoutes);
+app.use('/api/expense-categories', expenseCategoryRoutes);
+app.use('/api/expenses', expenseRoutes);
 
 app.use(notFound);
 app.use(errorHandler);

@@ -21,5 +21,10 @@ export const updateUserSchema = z.object({
   isActive: z.boolean().optional(),
 });
 
+export const resetPasswordSchema = z.object({
+  newPassword: z.string().min(8, 'Le mot de passe doit contenir au moins 8 caractères'),
+});
+
 export type CreateUserInput = z.infer<typeof createUserSchema>;
 export type UpdateUserInput = z.infer<typeof updateUserSchema>;
+export type ResetPasswordInput = z.infer<typeof resetPasswordSchema>;

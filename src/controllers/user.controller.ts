@@ -3,7 +3,7 @@ import bcrypt from 'bcryptjs';
 import { prisma } from '../config/prisma';
 import { resolveEstablishmentId } from '../utils/resolveEstablishmentId';
 import { assertInScope } from '../utils/assertInScope';
-import { CreateUserInput, UpdateUserInput } from '../validators/user.validator';
+import { CreateUserInput, UpdateUserInput, ResetPasswordInput } from '../validators/user.validator';
 
 export const listUsers = async (req: Request, res: Response) => {
   const users = await req.db.user.findMany({
@@ -99,4 +99,33 @@ export const updateUser = async (req: Request, res: Response) => {
   });
 
   res.status(200).json({ user });
+};
+
+// POST /api/users/:id/reset-password — réservé à OWNER/ADMIN (via les routes),
+// pour un employé qui a oublié son mot de passe. Ne demande pas l'ancien mot
+// de passe, contrairement à changePassword dans auth.controller.ts qui reste
+// réservé à l'utilisateur changeant lui-même le sien.
+export const resetUserPassword = async (req: Request, res: Response) => {
+  const { id } = req.params;
+  const { newPassword } = req.body as ResetPasswordInput;
+
+  if (id === req.user!.id) {
+    return res
+      .status(400)
+      .json({ message: 'Utilise le changement de mot de passe depuis ton profil' });
+  }
+
+  const existing = await assertInScope(
+    () => req.db.user.findFirst({ where: { id } }),
+    'Utilisateur introuvable'
+  );
+
+  if (existing.role === 'OWNER') {
+    return res.status(403).json({ message: 'Impossible de modifier le compte propriétaire ici' });
+  }
+
+  const passwordHash = await bcrypt.hash(newPassword, 10);
+  await prisma.user.update({ where: { id }, data: { passwordHash } });
+
+  res.status(200).json({ message: 'Mot de passe réinitialisé' });
 };

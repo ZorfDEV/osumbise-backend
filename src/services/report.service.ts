@@ -89,10 +89,12 @@ export const getReportData = async (
     }
   }
 
-  const expenseMovements = await req.db.cashMovement.findMany({
-    where: { type: 'EXPENSE', createdAt: { gte: start, lt: end } },
+  // Dépenses catégorisées (section 21 du document) — distinctes des sorties
+  // de caisse ponctuelles, qui ne couvrent que l'argent physique du tiroir
+  const expenseRecords = await req.db.expense.findMany({
+    where: { createdAt: { gte: start, lt: end } },
   });
-  const expenses = expenseMovements.reduce((sum, m) => sum + Math.abs(Number(m.amount)), 0);
+  const expenses = expenseRecords.reduce((sum, e) => sum + Number(e.amount), 0);
 
   const margin = revenue > 0 ? (profit / revenue) * 100 : 0;
 
@@ -136,7 +138,6 @@ export const buildReportCsv = (data: ReportData): string => {
   csv += toCsvRow(['Coût des marchandises', data.merchandiseCost]);
   csv += toCsvRow(['Bénéfice estimé', data.profit]);
   csv += toCsvRow(['Marge (%)', data.margin.toFixed(2)]);
-  csv += toCsvRow(['Dépenses', data.expenses]);
   csv += '\n';
 
   csv += toCsvRow(['Mode de paiement', 'Montant']);
@@ -177,7 +178,6 @@ export const buildReportPdf = (data: ReportData, title: string): PDFKit.PDFDocum
   line('Coût des marchandises', formatFcfa(data.merchandiseCost));
   line('Bénéfice estimé', formatFcfa(data.profit));
   line('Marge', `${data.margin.toFixed(1)} %`);
-  line('Dépenses', formatFcfa(data.expenses));
 
   doc.moveDown();
   doc.fontSize(13).text('Modes de paiement');

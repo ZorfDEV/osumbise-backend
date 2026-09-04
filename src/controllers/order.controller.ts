@@ -58,6 +58,8 @@ export const getOrder = async (req: Request, res: Response) => {
       items: { include: { product: true } },
       payments: true,
       statusHistory: { orderBy: { changedAt: 'asc' } },
+      user: { select: { name: true } },
+      establishment: { select: { name: true, address: true, logo: true } },
     },
   });
 

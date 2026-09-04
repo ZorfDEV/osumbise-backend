@@ -15,7 +15,7 @@ export const listEstablishments = async (req: Request, res: Response) => {
 };
 
 export const createEstablishment = async (req: Request, res: Response) => {
-  const { name, type, address } = req.body as CreateEstablishmentInput;
+  const { name, type, address, logo } = req.body as CreateEstablishmentInput;
 
   // Pas besoin de resolveEstablishmentId ici : un établissement est rattaché
   // directement à l'organisation, pas à un autre établissement
@@ -24,6 +24,7 @@ export const createEstablishment = async (req: Request, res: Response) => {
       name,
       type,
       address,
+      logo,
       organizationId: req.user!.organizationId,
     },
   });

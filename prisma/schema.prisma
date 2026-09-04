@@ -72,6 +72,7 @@ model Establishment {
   name           String
   type           EstablishmentType
   address        String?
+  logo           String?
   users          User[]
   categories     Category[]
   products       Product[]
@@ -80,6 +81,8 @@ model Establishment {
   cashRegisters  CashRegister[]
   suppliers      Supplier[]
   purchaseOrders PurchaseOrder[]
+  expenseCategories ExpenseCategory[]
+  expenses       Expense[]
   createdAt      DateTime          @default(now()) @map("created_at")
   updatedAt      DateTime          @updatedAt @map("updated_at")
 
@@ -111,6 +114,7 @@ model User {
   orders             Order[]
   stockMovements     StockMovement[]
   purchaseOrders     PurchaseOrder[]
+  expenses           Expense[]
   cashSessionsOpened CashSession[]   @relation("OpenedBy")
   cashSessionsClosed CashSession[]   @relation("ClosedBy")
   auditLogs          AuditLog[]
@@ -454,4 +458,34 @@ model AuditLog {
   createdAt      DateTime     @default(now()) @map("created_at")
 
   @@map("audit_logs")
+}
+
+// ============================================================
+// DÉPENSES (V2)
+// ============================================================
+
+model ExpenseCategory {
+  id              String    @id @default(uuid())
+  establishmentId String    @map("establishment_id")
+  establishment   Establishment @relation(fields: [establishmentId], references: [id])
+  name            String // ex. Électricité, Eau, Transport, Maintenance, Autres
+  expenses        Expense[]
+  createdAt       DateTime  @default(now()) @map("created_at")
+
+  @@map("expense_categories")
+}
+
+model Expense {
+  id                String          @id @default(uuid())
+  establishmentId   String          @map("establishment_id")
+  establishment     Establishment   @relation(fields: [establishmentId], references: [id])
+  expenseCategoryId String          @map("expense_category_id")
+  expenseCategory   ExpenseCategory @relation(fields: [expenseCategoryId], references: [id])
+  amount            Decimal         @db.Decimal(12, 2)
+  note              String?
+  userId            String?         @map("user_id")
+  user              User?           @relation(fields: [userId], references: [id])
+  createdAt         DateTime        @default(now()) @map("created_at")
+
+  @@map("expenses")
 }
