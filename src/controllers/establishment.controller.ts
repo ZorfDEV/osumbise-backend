@@ -4,6 +4,7 @@ import {
   CreateEstablishmentInput,
   UpdateEstablishmentInput,
 } from '../validators/establishment.validator';
+import { checkEstablishmentLimit } from '../utils/planLimits';
 
 export const listEstablishments = async (req: Request, res: Response) => {
   // Scopé par organizationId — un OWNER voit tous les établissements de son
@@ -16,6 +17,11 @@ export const listEstablishments = async (req: Request, res: Response) => {
 
 export const createEstablishment = async (req: Request, res: Response) => {
   const { name, type, address, logo } = req.body as CreateEstablishmentInput;
+
+  const limitError = await checkEstablishmentLimit(req.user!.organizationId);
+  if (limitError) {
+    return res.status(403).json({ message: limitError });
+  }
 
   // Pas besoin de resolveEstablishmentId ici : un établissement est rattaché
   // directement à l'organisation, pas à un autre établissement

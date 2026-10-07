@@ -1,3 +1,4 @@
+import path from 'path';
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
@@ -20,6 +21,11 @@ import supplierRoutes from './routes/supplier.routes';
 import purchaseOrderRoutes from './routes/purchaseOrder.routes';
 import expenseCategoryRoutes from './routes/expenseCategory.routes';
 import expenseRoutes from './routes/expense.routes';
+import planRoutes from './routes/plan.routes';
+import subscriptionRoutes from './routes/subscription.routes';
+import webhookRoutes from './routes/webhook.routes';
+import platformAdminRoutes from './routes/platformAdmin.routes';
+import customerRoutes from './routes/customer.routes';
 
 const app = express();
 
@@ -32,7 +38,17 @@ app.use(
   })
 );
 app.use(helmet());
-app.use(express.json());
+app.use(
+  express.json({
+    verify: (req, _res, buf) => {
+      // Nécessaire pour recalculer le hash HMAC des webhooks (Airtel Money) —
+      // le recalculer à partir de req.body déjà parsé risquerait de donner un
+      // JSON légèrement différent (ordre des clés, espaces) et de faire
+      // échouer la comparaison même quand la notification est authentique.
+      req.rawBody = buf;
+    },
+  })
+);
 app.use(cookieParser());
 
 if (process.env.NODE_ENV !== 'production') {
@@ -42,6 +58,17 @@ if (process.env.NODE_ENV !== 'production') {
 app.get('/api/health', (req, res) => {
   res.status(200).json({ status: 'ok' });
 });
+
+app.use(
+  '/api/uploads',
+  express.static(path.join(process.cwd(), 'uploads'), {
+    setHeaders: (res) => {
+      // Nécessaire pour que le frontend (autre origine en prod) puisse
+      // afficher ces images dans une balise <img> malgré helmet()
+      res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+    },
+  })
+);
 
 app.use('/api/auth', authRoutes);
 app.use('/api/establishments', establishmentRoutes);
@@ -59,6 +86,11 @@ app.use('/api/suppliers', supplierRoutes);
 app.use('/api/purchase-orders', purchaseOrderRoutes);
 app.use('/api/expense-categories', expenseCategoryRoutes);
 app.use('/api/expenses', expenseRoutes);
+app.use('/api/plans', planRoutes);
+app.use('/api/subscription', subscriptionRoutes);
+app.use('/api/webhooks', webhookRoutes);
+app.use('/api/platform-admin', platformAdminRoutes);
+app.use('/api/customers', customerRoutes);
 
 app.use(notFound);
 app.use(errorHandler);

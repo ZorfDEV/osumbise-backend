@@ -11,11 +11,41 @@ const cookieOptions = {
   maxAge: COOKIE_MAX_AGE,
 };
 
+// Détermine le type d'établissement à utiliser pour réorganiser la sidebar
+// côté frontend (masquer Tables/Cuisine pour un Grossiste, par ex). Si
+// l'utilisateur a un établissement fixe (tous les rôles sauf OWNER), on
+// utilise directement le sien. Pour un OWNER (établissement non fixe, peut
+// en gérer plusieurs), on retombe sur le premier établissement créé de son
+// organisation — approximation raisonnable tant qu'il n'existe pas de
+// sélecteur d'établissement actif pour les comptes multi-établissements.
+async function resolveEstablishmentType(
+  establishmentId: string | null,
+  organizationId: string
+) {
+  if (establishmentId) {
+    const establishment = await prisma.establishment.findUnique({
+      where: { id: establishmentId },
+      select: { type: true },
+    });
+    return establishment?.type ?? null;
+  }
+
+  const first = await prisma.establishment.findFirst({
+    where: { organizationId },
+    orderBy: { createdAt: 'asc' },
+    select: { type: true },
+  });
+  return first?.type ?? null;
+}
+
 // POST /api/auth/register
 // Crée l'organisation ET son premier utilisateur (OWNER) en une transaction :
 // on ne veut jamais se retrouver avec une organisation sans propriétaire.
+// Ne crée PAS d'abonnement ici — c'est fait séparément par POST /api/subscription
+// une fois l'utilisateur connecté, sur la page /subscribe dédiée.
 export const register = async (req: Request, res: Response) => {
-  const { organizationName, name, email, password } = req.body as RegisterInput;
+  const { organizationName, name, email, password, establishmentName, establishmentType } =
+    req.body as RegisterInput;
 
   const existing = await prisma.user.findUnique({ where: { email } });
   if (existing) {
@@ -24,9 +54,17 @@ export const register = async (req: Request, res: Response) => {
 
   const passwordHash = await bcrypt.hash(password, 10);
 
-  const { organization, user } = await prisma.$transaction(async (tx) => {
+  const { organization, user, establishment } = await prisma.$transaction(async (tx) => {
     const organization = await tx.organization.create({
       data: { name: organizationName },
+    });
+
+    // Créé immédiatement (avant même le choix de formule sur /subscribe) —
+    // aucune limite de plan à vérifier ici puisqu'aucun abonnement n'existe
+    // encore : checkEstablishmentLimit renvoie toujours null tant que
+    // l'organisation n'a pas de Subscription (voir utils/planLimits.ts).
+    const establishment = await tx.establishment.create({
+      data: { organizationId: organization.id, name: establishmentName, type: establishmentType },
     });
 
     const user = await tx.user.create({
@@ -39,7 +77,7 @@ export const register = async (req: Request, res: Response) => {
       },
     });
 
-    return { organization, user };
+    return { organization, user, establishment };
   });
 
   const token = signToken({
@@ -59,8 +97,11 @@ export const register = async (req: Request, res: Response) => {
       role: user.role,
       organizationId: user.organizationId,
       establishmentId: user.establishmentId,
-      establishment: null, // aucun établissement n'existe encore à l'inscription
+      establishment: null, // pas d'établissement FIXE pour un OWNER (voir Topbar.tsx)
+      establishmentType: establishment.type,
       organization: { name: organization.name },
+      hasSubscription: false, // le choix du plan se fait juste après, sur /subscribe
+      isPlatformAdmin: false,
     },
   });
 };
@@ -97,6 +138,16 @@ export const login = async (req: Request, res: Response) => {
 
   res.cookie('token', token, cookieOptions);
 
+  const subscription = await prisma.subscription.findUnique({
+    where: { organizationId: user.organizationId },
+    select: { id: true },
+  });
+
+  const establishmentType = await resolveEstablishmentType(
+    user.establishmentId,
+    user.organizationId
+  );
+
   res.status(200).json({
     user: {
       id: user.id,
@@ -106,7 +157,10 @@ export const login = async (req: Request, res: Response) => {
       organizationId: user.organizationId,
       establishmentId: user.establishmentId,
       establishment: user.establishment,
+      establishmentType,
       organization: user.organization,
+      hasSubscription: !!subscription,
+      isPlatformAdmin: user.isPlatformAdmin,
     },
   });
 };
@@ -137,6 +191,7 @@ export const me = async (req: Request, res: Response) => {
       organizationId: true,
       establishmentId: true,
       isActive: true,
+      isPlatformAdmin: true,
       // Un OWNER n'a pas d'establishmentId fixe (voir resolveEstablishmentId) :
       // establishment sera alors null, le frontend retombe sur organization.name
       establishment: { select: { name: true, logo: true } },
@@ -148,7 +203,17 @@ export const me = async (req: Request, res: Response) => {
     return res.status(404).json({ message: 'Utilisateur introuvable' });
   }
 
-  res.status(200).json({ user });
+  const subscription = await prisma.subscription.findUnique({
+    where: { organizationId: user.organizationId },
+    select: { id: true },
+  });
+
+  const establishmentType = await resolveEstablishmentType(
+    user.establishmentId,
+    user.organizationId
+  );
+
+  res.status(200).json({ user: { ...user, hasSubscription: !!subscription, establishmentType } });
 };
 
 // PATCH /api/auth/me — mise à jour du profil par l'utilisateur lui-même

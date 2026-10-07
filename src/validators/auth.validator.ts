@@ -7,6 +7,8 @@ export const registerSchema = z.object({
   name: z.string().min(2, 'Le nom doit contenir au moins 2 caractères'),
   email: z.string().email('Email invalide'),
   password: z.string().min(8, 'Le mot de passe doit contenir au moins 8 caractères'),
+  establishmentName: z.string().min(2, "Le nom de l'établissement est requis"),
+  establishmentType: z.enum(['BAR', 'RESTAURANT', 'HOTEL', 'GROSSISTE', 'EPICERIE']),
 });
 
 export const loginSchema = z.object({

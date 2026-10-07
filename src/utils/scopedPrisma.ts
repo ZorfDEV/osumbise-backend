@@ -44,6 +44,9 @@ const MODEL_SCOPES: Record<
 
   ExpenseCategory: { path: 'establishmentId', scope: 'establishment' },
   Expense: { path: 'establishmentId', scope: 'establishment' },
+
+  Customer: { path: 'establishmentId', scope: 'establishment' },
+  CustomerPayment: { path: 'customer.establishmentId', scope: 'establishment' },
 };
 
 // Opérations pour lesquelles Prisma accepte de façon fiable des filtres `where`

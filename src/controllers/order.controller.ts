@@ -7,6 +7,7 @@ import { recalculateOrderTotals } from '../services/order.service';
 import { payOrder } from '../services/payment.service';
 import { PayOrderInput } from '../validators/payment.validator';
 import { emitToEstablishment } from '../realtime/socket';
+import { getEffectivePrice } from '../utils/productPricing';
 import {
   CreateOrderInput,
   AddOrderItemInput,
@@ -60,6 +61,7 @@ export const getOrder = async (req: Request, res: Response) => {
       statusHistory: { orderBy: { changedAt: 'asc' } },
       user: { select: { name: true } },
       establishment: { select: { name: true, address: true, logo: true } },
+      customer: { select: { id: true, name: true, balance: true } },
     },
   });
 
@@ -71,7 +73,7 @@ export const getOrder = async (req: Request, res: Response) => {
 };
 
 export const createOrder = async (req: Request, res: Response) => {
-  const { tableId, customerName } = req.body as CreateOrderInput;
+  const { tableId, customerName, customerId } = req.body as CreateOrderInput;
   const establishmentId = await resolveEstablishmentId(req);
 
   if (tableId) {
@@ -81,12 +83,20 @@ export const createOrder = async (req: Request, res: Response) => {
     );
   }
 
+  if (customerId) {
+    await assertInScope(
+      () => req.db.customer.findFirst({ where: { id: customerId } }),
+      'Client introuvable'
+    );
+  }
+
   const order = await prisma.$transaction(async (tx) => {
     const created = await tx.order.create({
       data: {
         establishmentId,
         tableId,
         customerName,
+        customerId,
         userId: req.user!.id,
         status: 'BROUILLON',
       },
@@ -134,7 +144,8 @@ export const addOrderItem = async (req: Request, res: Response) => {
       orderId: id,
       productId,
       quantity,
-      unitPrice: product.sellingPrice, // figé au moment de l'ajout
+      // figé au moment de l'ajout, remise en cours (tag) déjà appliquée si active
+      unitPrice: getEffectivePrice(product),
       note,
     },
   });
@@ -251,4 +262,30 @@ export const payOrderHandler = async (req: Request, res: Response) => {
   const updatedOrder = await payOrder(id, payments, req.user!.id, cashSessionId);
   emitToEstablishment(order.establishmentId, 'order:paid', { orderId: id });
   res.status(200).json({ order: updatedOrder });
+};
+
+// PATCH /api/orders/:id/customer — rattache (ou retire) un client enregistré
+// à une commande, depuis l'écran de vente lui-même. Nécessaire pour vendre à
+// crédit (voir payment.service.ts, qui refuse un paiement CREDIT sans client
+// rattaché).
+export const setOrderCustomer = async (req: Request, res: Response) => {
+  const { id } = req.params;
+  const { customerId } = req.body as { customerId: string | null };
+
+  await assertInScope(() => req.db.order.findFirst({ where: { id } }), 'Commande introuvable');
+
+  if (customerId) {
+    await assertInScope(
+      () => req.db.customer.findFirst({ where: { id: customerId } }),
+      'Client introuvable'
+    );
+  }
+
+  const order = await prisma.order.update({
+    where: { id },
+    data: { customerId },
+    include: { customer: { select: { id: true, name: true, balance: true } } },
+  });
+
+  res.status(200).json({ order });
 };

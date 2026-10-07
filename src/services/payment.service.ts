@@ -32,6 +32,17 @@ export const payOrder = async (
     });
   }
 
+  const creditAmount = payments
+    .filter((p) => p.method === 'CREDIT')
+    .reduce((sum, p) => sum + p.amount, 0);
+
+  if (creditAmount > 0 && !order.customerId) {
+    throw Object.assign(
+      new Error('Impossible de vendre à crédit sans client rattaché à la commande'),
+      { status: 400 }
+    );
+  }
+
   const totalPaid = payments.reduce((sum, p) => sum + p.amount, 0);
   if (totalPaid < Number(order.total)) {
     throw Object.assign(
@@ -76,6 +87,16 @@ export const payOrder = async (
     await tx.payment.createMany({
       data: payments.map((p) => ({ orderId, method: p.method, amount: p.amount })),
     });
+
+    // Vente à crédit : le montant s'ajoute au solde dû du client plutôt que
+    // de générer un mouvement de caisse — aucun argent réel n'a encore changé
+    // de mains, c'est justement le principe d'un compte client.
+    if (creditAmount > 0 && order.customerId) {
+      await tx.customer.update({
+        where: { id: order.customerId },
+        data: { balance: { increment: creditAmount } },
+      });
+    }
 
     if (cashSessionId) {
       const movementsToCreate: {

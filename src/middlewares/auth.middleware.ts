@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 import { Role } from '@prisma/client';
+import { prisma } from '../config/prisma';
 
 interface JwtPayload {
   id: string;
@@ -35,3 +36,24 @@ export const authorize =
     }
     next();
   };
+
+// Réservé au tableau de bord plateforme (gestion transverse de toutes les
+// organisations). Vérifié en base à chaque requête plutôt que via une
+// information portée par le JWT, pour qu'une révocation d'accès soit
+// immédiate plutôt que d'attendre l'expiration du jeton en cours.
+export const requirePlatformAdmin = async (req: Request, res: Response, next: NextFunction) => {
+  if (!req.user) {
+    return res.status(401).json({ message: 'Non authentifié' });
+  }
+
+  const user = await prisma.user.findUnique({
+    where: { id: req.user.id },
+    select: { isPlatformAdmin: true },
+  });
+
+  if (!user?.isPlatformAdmin) {
+    return res.status(403).json({ message: 'Accès réservé aux administrateurs de la plateforme' });
+  }
+
+  next();
+};

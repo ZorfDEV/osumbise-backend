@@ -3,7 +3,12 @@ import { z } from 'zod';
 export const createOrderSchema = z.object({
   tableId: z.string().uuid().optional(),
   customerName: z.string().optional(),
+  customerId: z.string().uuid().optional(),
   establishmentId: z.string().uuid().optional(),
+});
+
+export const setOrderCustomerSchema = z.object({
+  customerId: z.string().uuid().nullable(),
 });
 
 export const addOrderItemSchema = z.object({

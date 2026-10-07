@@ -4,6 +4,7 @@ import { prisma } from '../config/prisma';
 import { resolveEstablishmentId } from '../utils/resolveEstablishmentId';
 import { assertInScope } from '../utils/assertInScope';
 import { CreateUserInput, UpdateUserInput, ResetPasswordInput } from '../validators/user.validator';
+import { checkUserLimit } from '../utils/planLimits';
 
 export const listUsers = async (req: Request, res: Response) => {
   const users = await req.db.user.findMany({
@@ -29,6 +30,11 @@ export const createUser = async (req: Request, res: Response) => {
   // créateur est assigné à un établissement fixe, explicite (et vérifié) si
   // c'est un OWNER multi-établissements
   const establishmentId = await resolveEstablishmentId(req);
+
+  const limitError = await checkUserLimit(req.user!.organizationId);
+  if (limitError) {
+    return res.status(403).json({ message: limitError });
+  }
 
   const existing = await prisma.user.findUnique({ where: { email } });
   if (existing) {

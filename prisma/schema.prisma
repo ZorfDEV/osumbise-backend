@@ -30,6 +30,7 @@ model Plan {
   price             Decimal        @db.Decimal(12, 2)
   maxEstablishments Int            @map("max_establishments")
   maxUsers          Int            @map("max_users")
+  features          String[]       @default([])
   subscriptions     Subscription[]
 
   @@map("plans")
@@ -51,8 +52,33 @@ model Subscription {
   status           SubscriptionStatus @default(TRIAL)
   currentPeriodEnd DateTime           @map("current_period_end")
   createdAt        DateTime           @default(now()) @map("created_at")
+  payments         SubscriptionPayment[]
 
   @@map("subscriptions")
+}
+
+enum SubscriptionPaymentStatus {
+  PENDING
+  SUCCESS
+  FAILED
+}
+
+// Une tentative de paiement d'abonnement via Mobile Money (Airtel Money pour
+// l'instant). Distinct du modèle Payment existant, qui concerne les
+// encaissements clients au comptoir — deux univers métier différents.
+model SubscriptionPayment {
+  id               String                    @id @default(uuid())
+  subscriptionId   String                    @map("subscription_id")
+  subscription     Subscription              @relation(fields: [subscriptionId], references: [id])
+  amount           Decimal                   @db.Decimal(12, 2)
+  phone            String // numéro Mobile Money débité
+  status           SubscriptionPaymentStatus @default(PENDING)
+  externalRef      String?                   @unique @map("external_ref") // id de transaction côté Airtel
+  providerResponse Json?                     @map("provider_response") // brut, utile pour le débogage
+  createdAt        DateTime                  @default(now()) @map("created_at")
+  updatedAt        DateTime                  @updatedAt @map("updated_at")
+
+  @@map("subscription_payments")
 }
 
 // ============================================================
@@ -63,6 +89,8 @@ enum EstablishmentType {
   BAR
   RESTAURANT
   HOTEL
+  GROSSISTE
+  EPICERIE
 }
 
 model Establishment {
@@ -83,6 +111,7 @@ model Establishment {
   purchaseOrders PurchaseOrder[]
   expenseCategories ExpenseCategory[]
   expenses       Expense[]
+  customers      Customer[]
   createdAt      DateTime          @default(now()) @map("created_at")
   updatedAt      DateTime          @updatedAt @map("updated_at")
 
@@ -111,10 +140,16 @@ model User {
   passwordHash       String          @map("password_hash")
   role               Role
   isActive           Boolean         @default(true) @map("is_active")
+  // Accès transverse au tableau de bord plateforme (gestion des abonnements
+  // de TOUTES les organisations) — indépendant du rôle par organisation
+  // ci-dessus. Aucune UI ne permet de l'activer : à faire directement en
+  // base (Prisma Studio) pour le tout premier administrateur plateforme.
+  isPlatformAdmin    Boolean         @default(false) @map("is_platform_admin")
   orders             Order[]
   stockMovements     StockMovement[]
   purchaseOrders     PurchaseOrder[]
   expenses           Expense[]
+  customerPayments   CustomerPayment[]
   cashSessionsOpened CashSession[]   @relation("OpenedBy")
   cashSessionsClosed CashSession[]   @relation("ClosedBy")
   auditLogs          AuditLog[]
@@ -148,6 +183,13 @@ enum Unit {
   L
 }
 
+enum ProductType {
+  VEGETARIEN
+  SANS_SUCRE
+  ALCOOLISE
+  MUSULMAN
+}
+
 model Product {
   id              String        @id @default(uuid())
   establishmentId String        @map("establishment_id")
@@ -163,6 +205,13 @@ model Product {
   stockCurrent    Decimal       @default(0) @map("stock_current") @db.Decimal(10, 3)
   stockMin        Decimal       @default(0) @map("stock_min") @db.Decimal(10, 3)
   image           String?
+  // Remise en pourcentage (0-100) appliquée sur sellingPrice, facultative.
+  // Sans tagStartsAt/tagEndsAt, la remise s'applique tant que tag est renseigné ;
+  // avec, elle n'est active que durant cette période (bornes incluses)
+  tag             Decimal?      @db.Decimal(5, 2)
+  tagStartsAt     DateTime?     @map("tag_starts_at") @db.Date
+  tagEndsAt       DateTime?     @map("tag_ends_at") @db.Date
+  type            ProductType?
   isActive        Boolean       @default(true) @map("is_active")
 
   // Recette : si ce produit est composé d'autres produits (ex. Poulet braisé -> Riz, Huile...)
@@ -234,6 +283,11 @@ model Order {
   userId          String        @map("user_id") // serveur / caissier qui a créé la commande
   user            User          @relation(fields: [userId], references: [id])
   customerName    String?       @map("customer_name")
+  // Client enregistré (grossiste) — distinct de customerName (texte libre pour
+  // un client de passage non enregistré). Nécessaire pour une vente à crédit :
+  // impossible de créditer un compte client sans savoir lequel.
+  customerId      String?       @map("customer_id")
+  customer        Customer?     @relation(fields: [customerId], references: [id])
   status          OrderStatus   @default(BROUILLON)
   subtotal        Decimal       @default(0) @db.Decimal(12, 2)
   discount        Decimal       @default(0) @db.Decimal(12, 2)
@@ -458,6 +512,49 @@ model AuditLog {
   createdAt      DateTime     @default(now()) @map("created_at")
 
   @@map("audit_logs")
+}
+
+// ============================================================
+// CLIENTS À CRÉDIT (module Grossiste)
+// ============================================================
+
+// Un client enregistré d'un grossiste (ex. un bar qui achète ses caisses de
+// boissons). Permet la vente à crédit : le solde s'incrémente à chaque vente
+// payée en mode CREDIT, et se décrémente à chaque règlement enregistré.
+model Customer {
+  id              String            @id @default(uuid())
+  establishmentId String            @map("establishment_id")
+  establishment   Establishment     @relation(fields: [establishmentId], references: [id])
+  name            String
+  phone           String?
+  address         String?
+  creditLimit     Decimal?          @map("credit_limit") @db.Decimal(12, 2)
+  // Solde dû par le client — positif = le client doit de l'argent au grossiste.
+  // Mis à jour par payment.service.ts (vente à crédit) et
+  // customer.controller.ts (règlement reçu), jamais modifié directement ailleurs.
+  balance         Decimal           @default(0) @db.Decimal(12, 2)
+  isActive        Boolean           @default(true) @map("is_active")
+  orders          Order[]
+  payments        CustomerPayment[]
+  createdAt       DateTime          @default(now()) @map("created_at")
+  updatedAt       DateTime          @updatedAt @map("updated_at")
+
+  @@map("customers")
+}
+
+// Un règlement reçu d'un client, qui réduit son solde dû
+model CustomerPayment {
+  id         String        @id @default(uuid())
+  customerId String        @map("customer_id")
+  customer   Customer      @relation(fields: [customerId], references: [id])
+  amount     Decimal       @db.Decimal(12, 2)
+  method     PaymentMethod
+  note       String?
+  userId     String?       @map("user_id")
+  user       User?         @relation(fields: [userId], references: [id])
+  createdAt  DateTime      @default(now()) @map("created_at")
+
+  @@map("customer_payments")
 }
 
 // ============================================================

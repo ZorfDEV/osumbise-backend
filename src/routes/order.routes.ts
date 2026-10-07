@@ -7,6 +7,7 @@ import {
   addOrderItemSchema,
   updateOrderItemSchema,
   updateOrderStatusSchema,
+  setOrderCustomerSchema,
 } from '../validators/order.validator';
 import { payOrderSchema } from '../validators/payment.validator';
 import {
@@ -18,6 +19,7 @@ import {
   removeOrderItem,
   updateOrderStatus,
   payOrderHandler,
+  setOrderCustomer,
 } from '../controllers/order.controller';
 import { asyncHandler } from '../utils/jwt';
 
@@ -45,6 +47,13 @@ router.patch(
   asyncHandler(updateOrderItem)
 );
 router.delete('/:id/items/:itemId', authorize(...FLOOR_STAFF), asyncHandler(removeOrderItem));
+
+router.patch(
+  '/:id/customer',
+  authorize(...FLOOR_STAFF),
+  validate(setOrderCustomerSchema),
+  asyncHandler(setOrderCustomer)
+);
 
 // COOK inclus : c'est lui qui fait avancer EN_PREPARATION -> PRETE en cuisine
 router.patch(

@@ -2,12 +2,14 @@ import { Router } from 'express';
 import { protect, authorize } from '../middlewares/auth.middleware';
 import { scopeTenant } from '../middlewares/tenant.middleware';
 import { validate } from '../middlewares/validate.middleware';
+import { uploadProductImage as uploadProductImageMiddleware } from '../middlewares/upload.middleware';
 import { createProductSchema, updateProductSchema } from '../validators/product.validator';
 import {
   listProducts,
   getProduct,
   createProduct,
   updateProduct,
+  uploadProductImage,
   deleteProduct,
 } from '../controllers/product.controller';
 import { asyncHandler } from '../utils/jwt';
@@ -30,6 +32,12 @@ router.patch(
   authorize('OWNER', 'ADMIN', 'STOCK_KEEPER'),
   validate(updateProductSchema),
   asyncHandler(updateProduct)
+);
+router.post(
+  '/:id/image',
+  authorize('OWNER', 'ADMIN', 'STOCK_KEEPER'),
+  uploadProductImageMiddleware,
+  asyncHandler(uploadProductImage)
 );
 router.delete('/:id', authorize('OWNER', 'ADMIN'), asyncHandler(deleteProduct));
 

@@ -2,7 +2,7 @@ import { z } from 'zod';
 
 export const createEstablishmentSchema = z.object({
   name: z.string().min(2, 'Le nom doit contenir au moins 2 caractères'),
-  type: z.enum(['BAR', 'RESTAURANT', 'HOTEL']),
+  type: z.enum(['BAR', 'RESTAURANT', 'HOTEL', 'GROSSISTE', 'EPICERIE']),
   address: z.string().optional(),
   logo: z.string().url('URL invalide').optional().or(z.literal('')),
 });

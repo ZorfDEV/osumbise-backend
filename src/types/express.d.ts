@@ -11,6 +11,9 @@ declare global {
         role: Role;
       };
       db: ScopedPrismaClient;
+      // Corps brut de la requête, capturé pour vérifier la signature HMAC
+      // des webhooks (ex. Airtel Money) — voir app.ts et webhook.controller.ts
+      rawBody?: Buffer;
     }
   }
 }
