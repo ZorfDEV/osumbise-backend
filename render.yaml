@@ -45,7 +45,7 @@ services:
         value: 24h # cohérent avec COOKIE_MAX_AGE (src/utils/jwt.ts)
       - key: UPLOADS_DIR
         value: /var/data/uploads
-      # Adresse exacte du frontend, sans "/" final (ex. https://app.osumbise.com)
+      # Adresse exacte du frontend, sans "/" final (ex. https://osumbice.com)
       - key: CLIENT_URL
         sync: false
       # --- Airtel Money ---
@@ -89,6 +89,6 @@ services:
         name: Cache-Control
         value: public, max-age=31536000, immutable
     envVars:
-      # URL complète de l'API (ex. https://api.osumbise.com/api)
+      # URL complète de l'API (ex. https://api.osumbice.com/api)
       - key: VITE_API_URL
         sync: false
