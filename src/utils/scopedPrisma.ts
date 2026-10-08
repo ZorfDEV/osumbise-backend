@@ -101,7 +101,11 @@ export const getScopedPrisma = (user: TenantContext) => {
 
             // AND plutôt que spread : évite toute collision si le controller
             // avait déjà un filtre sur le même champ
-            args.where = { AND: [args.where ?? {}, scopeWhere] };
+            // Cast : seules les opérations avec filtre (find*, update*, delete*,
+            // count…) arrivent ici, mais Prisma type args comme l'union de
+            // toutes les opérations, y compris create (sans where)
+            const filtered = args as { where?: unknown };
+            filtered.where = { AND: [filtered.where ?? {}, scopeWhere] };
           }
 
           return query(args);

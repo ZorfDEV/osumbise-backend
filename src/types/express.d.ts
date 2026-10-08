@@ -1,5 +1,5 @@
 import { Role } from '@prisma/client';
-import { ScopedPrismaClient } from './scopedPrisma';
+import { ScopedPrismaClient } from '../utils/scopedPrisma';
 
 declare global {
   namespace Express {

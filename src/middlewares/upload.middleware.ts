@@ -4,7 +4,11 @@ import crypto from 'crypto';
 import { Request, Response, NextFunction } from 'express';
 import multer from 'multer';
 
-export const PRODUCT_IMAGES_DIR = path.join(process.cwd(), 'uploads', 'products');
+// Dossier racine des fichiers envoyés. En production, UPLOADS_DIR doit pointer
+// vers un disque persistant (ex. /var/data/uploads sur Render) : le disque
+// du conteneur est effacé à chaque déploiement.
+export const UPLOADS_DIR = process.env.UPLOADS_DIR || path.join(process.cwd(), 'uploads');
+export const PRODUCT_IMAGES_DIR = path.join(UPLOADS_DIR, 'products');
 fs.mkdirSync(PRODUCT_IMAGES_DIR, { recursive: true });
 
 const MAX_IMAGE_SIZE = 1 * 1024 * 1024; // 1 Mo

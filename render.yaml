@@ -1,0 +1,94 @@
+# Blueprint Render : base PostgreSQL + API Node + frontend statique.
+# Dashboard Render > New > Blueprint > choisir ce dépôt (osumbise-backend).
+# Les valeurs "sync: false" sont demandées à la création (jamais dans git).
+#
+# Plans et tarifs : à vérifier sur https://render.com/pricing — le disque
+# persistant exige un plan payant pour l'API (starter ou supérieur).
+
+databases:
+  - name: osumbise-db
+    region: frankfurt # le plus proche du Gabon parmi les régions Render
+    plan: basic-256mb
+    databaseName: osumbise
+    user: osumbise
+    postgresMajorVersion: "16"
+
+services:
+  # --- API : Express + Prisma + Socket.IO ---
+  - type: web
+    name: osumbise-api
+    runtime: node
+    region: frankfurt
+    plan: starter
+    repo: https://github.com/ZorfDEV/osumbise-backend
+    branch: main
+    # --include=dev : prisma et typescript sont des devDependencies, et
+    # NODE_ENV=production ferait sinon sauter leur installation
+    buildCommand: npm ci --include=dev && npm run build
+    # Applique les migrations en attente avant chaque démarrage
+    startCommand: npm run prisma:deploy && npm start
+    healthCheckPath: /api/health
+    disk:
+      name: uploads
+      mountPath: /var/data/uploads
+      sizeGB: 1
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        fromDatabase:
+          name: osumbise-db
+          property: connectionString
+      - key: JWT_SECRET
+        generateValue: true # chaîne aléatoire générée par Render
+      - key: JWT_EXPIRES_IN
+        value: 24h # cohérent avec COOKIE_MAX_AGE (src/utils/jwt.ts)
+      - key: UPLOADS_DIR
+        value: /var/data/uploads
+      # Adresse exacte du frontend, sans "/" final (ex. https://app.osumbise.com)
+      - key: CLIENT_URL
+        sync: false
+      # --- Airtel Money ---
+      - key: AIRTEL_ENV
+        sync: false # "sandbox" pour les essais, "production" ensuite
+      - key: AIRTEL_CLIENT_ID
+        sync: false
+      - key: AIRTEL_CLIENT_SECRET
+        sync: false
+      - key: AIRTEL_CALLBACK_PRIVATE_KEY
+        sync: false
+      # Pays et devise sont fixés dans src/services/airtelMoney.service.ts.
+      # L'URL de callback se déclare sur le portail développeur Airtel :
+      #   https://<domaine de l'API>/api/webhooks/airtel-money
+
+  # --- Frontend : application React (site statique + PWA) ---
+  - type: web
+    name: osumbise-app
+    runtime: static
+    repo: https://github.com/ZorfDEV/osumbise-frontend
+    branch: main
+    buildCommand: npm ci && npm run build
+    staticPublishPath: dist
+    # React Router : toute adresse inconnue renvoie index.html (sinon un
+    # rafraîchissement sur /dashboard donnerait une erreur 404)
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
+    headers:
+      # Le service worker et index.html ne doivent jamais rester en cache,
+      # sinon les utilisateurs ne reçoivent pas les mises à jour
+      - path: /sw.js
+        name: Cache-Control
+        value: no-cache
+      - path: /index.html
+        name: Cache-Control
+        value: no-cache
+      # Fichiers versionnés (nom avec empreinte) : cache long
+      - path: /assets/*
+        name: Cache-Control
+        value: public, max-age=31536000, immutable
+    envVars:
+      # URL complète de l'API (ex. https://api.osumbise.com/api)
+      - key: VITE_API_URL
+        sync: false

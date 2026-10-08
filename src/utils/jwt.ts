@@ -11,7 +11,8 @@ interface TokenPayload {
 
 export const signToken = (payload: TokenPayload): string => {
   return jwt.sign(payload, process.env.JWT_SECRET as string, {
-    expiresIn: process.env.JWT_EXPIRES_IN || '24h',
+    // ex. '24h', '7d' — format attendu par jsonwebtoken (StringValue)
+    expiresIn: (process.env.JWT_EXPIRES_IN || '24h') as jwt.SignOptions['expiresIn'],
   });
 };
 

@@ -1,10 +1,10 @@
-import path from 'path';
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import morgan from 'morgan';
 import cookieParser from 'cookie-parser';
 import { notFound, errorHandler } from './middlewares/error.middleware';
+import { UPLOADS_DIR } from './middlewares/upload.middleware';
 import authRoutes from './routes/auth.routes';
 import establishmentRoutes from './routes/establishment.routes';
 import categoryRoutes from './routes/category.routes';
@@ -29,6 +29,12 @@ import customerRoutes from './routes/customer.routes';
 
 const app = express();
 
+// Derrière le proxy HTTPS de l'hébergeur (Render, Nginx…) : fait confiance au
+// premier proxy pour l'IP et le protocole réels de la requête
+if (process.env.NODE_ENV === 'production') {
+  app.set('trust proxy', 1);
+}
+
 // credentials: true + origin explicite sont obligatoires pour que le navigateur
 // accepte d'envoyer/recevoir le cookie HttpOnly depuis le dashboard web
 app.use(
@@ -45,7 +51,7 @@ app.use(
       // le recalculer à partir de req.body déjà parsé risquerait de donner un
       // JSON légèrement différent (ordre des clés, espaces) et de faire
       // échouer la comparaison même quand la notification est authentique.
-      req.rawBody = buf;
+      (req as express.Request).rawBody = buf;
     },
   })
 );
@@ -61,7 +67,7 @@ app.get('/api/health', (req, res) => {
 
 app.use(
   '/api/uploads',
-  express.static(path.join(process.cwd(), 'uploads'), {
+  express.static(UPLOADS_DIR, {
     setHeaders: (res) => {
       // Nécessaire pour que le frontend (autre origine en prod) puisse
       // afficher ces images dans une balise <img> malgré helmet()
