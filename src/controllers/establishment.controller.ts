@@ -1,5 +1,8 @@
+import fs from 'fs';
+import path from 'path';
 import { Request, Response } from 'express';
 import { prisma } from '../config/prisma';
+import { ESTABLISHMENT_LOGOS_DIR } from '../middlewares/upload.middleware';
 import {
   CreateEstablishmentInput,
   UpdateEstablishmentInput,
@@ -48,5 +51,48 @@ export const updateEstablishment = async (req: Request, res: Response) => {
   }
 
   const establishment = await prisma.establishment.update({ where: { id }, data });
+  res.status(200).json({ establishment });
+};
+
+// Supprime du disque un logo envoyé précédemment (pas les URL externes).
+// Best-effort : une erreur ici ne doit pas faire échouer la requête.
+const deleteStoredLogo = (logo: string | null) => {
+  if (logo?.startsWith('/uploads/establishments/')) {
+    fs.unlink(path.join(ESTABLISHMENT_LOGOS_DIR, path.basename(logo)), () => {});
+  }
+};
+
+// POST /api/establishments/:id/logo — fichier dans le champ "image"
+export const uploadEstablishmentLogo = async (req: Request, res: Response) => {
+  const { id } = req.params;
+
+  const existing = await req.db.establishment.findFirst({ where: { id } });
+  if (!existing) {
+    if (req.file) fs.unlink(req.file.path, () => {});
+    return res.status(404).json({ message: 'Établissement introuvable' });
+  }
+  if (!req.file) {
+    return res.status(400).json({ message: 'Aucun fichier reçu' });
+  }
+
+  deleteStoredLogo(existing.logo);
+  const establishment = await prisma.establishment.update({
+    where: { id },
+    data: { logo: `/uploads/establishments/${req.file.filename}` },
+  });
+  res.status(200).json({ establishment });
+};
+
+// DELETE /api/establishments/:id/logo
+export const removeEstablishmentLogo = async (req: Request, res: Response) => {
+  const { id } = req.params;
+
+  const existing = await req.db.establishment.findFirst({ where: { id } });
+  if (!existing) {
+    return res.status(404).json({ message: 'Établissement introuvable' });
+  }
+
+  deleteStoredLogo(existing.logo);
+  const establishment = await prisma.establishment.update({ where: { id }, data: { logo: null } });
   res.status(200).json({ establishment });
 };

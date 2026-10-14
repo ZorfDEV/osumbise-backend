@@ -10,7 +10,10 @@ import {
   listEstablishments,
   createEstablishment,
   updateEstablishment,
+  uploadEstablishmentLogo,
+  removeEstablishmentLogo,
 } from '../controllers/establishment.controller';
+import { uploadEstablishmentLogo as uploadEstablishmentLogoMiddleware } from '../middlewares/upload.middleware';
 import { asyncHandler } from '../utils/jwt';
 
 const router = Router();
@@ -30,5 +33,13 @@ router.patch(
   validate(updateEstablishmentSchema),
   asyncHandler(updateEstablishment)
 );
+// Logo envoyé depuis le poste (png/jpg, 1 Mo max), affiché sur les tickets
+router.post(
+  '/:id/logo',
+  authorize('OWNER', 'ADMIN'),
+  uploadEstablishmentLogoMiddleware,
+  asyncHandler(uploadEstablishmentLogo)
+);
+router.delete('/:id/logo', authorize('OWNER', 'ADMIN'), asyncHandler(removeEstablishmentLogo));
 
 export default router;
