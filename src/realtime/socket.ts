@@ -3,6 +3,7 @@ import { Server as SocketIOServer, Socket } from 'socket.io';
 import jwt from 'jsonwebtoken';
 import cookie from 'cookie';
 import { Role } from '@prisma/client';
+import { prisma } from '../config/prisma';
 
 interface SocketUser {
   id: string;
@@ -46,15 +47,30 @@ export const initSocket = (httpServer: HttpServer) => {
     }
   });
 
-  io.on('connection', (socket) => {
+  io.on('connection', async (socket) => {
     const user = socket.data.user as SocketUser;
 
-    // Limite connue : un OWNER (sans établissement fixe) ne rejoint aucune
-    // salle pour l'instant, donc ne reçoit pas ces événements en direct —
-    // un vrai sélecteur "établissement actif" (déjà évoqué pour le POS)
-    // réglerait aussi ce cas.
     if (user.establishmentId) {
       socket.join(`establishment:${user.establishmentId}`);
+      return;
+    }
+
+    // OWNER sans établissement fixe : il rejoint les salles de tous les
+    // établissements de son organisation. Les écrans rechargent leurs données
+    // à chaque événement, déjà filtrées par l'établissement actif (en-tête
+    // X-Establishment-Id), donc un événement d'un autre établissement est
+    // sans effet visible. Un établissement créé après la connexion est pris
+    // en compte à la reconnexion suivante.
+    if (user.role === 'OWNER') {
+      try {
+        const establishments = await prisma.establishment.findMany({
+          where: { organizationId: user.organizationId },
+          select: { id: true },
+        });
+        establishments.forEach((e) => socket.join(`establishment:${e.id}`));
+      } catch (err) {
+        console.error('Socket : impossible de joindre les établissements du propriétaire', err);
+      }
     }
   });
 };
