@@ -62,6 +62,8 @@ export const getOrder = async (req: Request, res: Response) => {
       user: { select: { name: true } },
       establishment: { select: { name: true, address: true, logo: true } },
       customer: { select: { id: true, name: true, balance: true } },
+      // Hôtel : consommation mise sur une chambre (affichée sur le ticket)
+      stay: { select: { id: true, guestName: true, room: { select: { number: true } } } },
     },
   });
 
@@ -239,7 +241,7 @@ export const updateOrderStatus = async (req: Request, res: Response) => {
 // décrémente le stock via les recettes, libère la table. Tout ou rien.
 export const payOrderHandler = async (req: Request, res: Response) => {
   const { id } = req.params;
-  const { payments, cashSessionId } = req.body as PayOrderInput;
+  const { payments, cashSessionId, stayId } = req.body as PayOrderInput;
 
   const order = await assertInScope(
     () => req.db.order.findFirst({ where: { id } }),
@@ -259,7 +261,15 @@ export const payOrderHandler = async (req: Request, res: Response) => {
     );
   }
 
-  const updatedOrder = await payOrder(id, payments, req.user!.id, cashSessionId);
+  // Consommation "sur la chambre" : le client doit être en séjour dans cet établissement
+  if (stayId) {
+    await assertInScope(
+      () => req.db.stay.findFirst({ where: { id: stayId, status: 'CHECKED_IN' } }),
+      'Séjour introuvable ou terminé : la consommation ne peut pas être mise sur cette chambre'
+    );
+  }
+
+  const updatedOrder = await payOrder(id, payments, req.user!.id, cashSessionId, stayId);
   emitToEstablishment(order.establishmentId, 'order:paid', { orderId: id });
   res.status(200).json({ order: updatedOrder });
 };

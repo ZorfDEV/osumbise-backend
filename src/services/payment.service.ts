@@ -3,11 +3,11 @@ import { prisma } from '../config/prisma';
 import { applyStockExits } from './stock.service';
 
 interface PaymentInput {
-  method: 'CASH' | 'CARD' | 'MOBILE_MONEY' | 'TRANSFER' | 'CREDIT';
+  method: 'CASH' | 'CARD' | 'MOBILE_MONEY' | 'TRANSFER' | 'CREDIT' | 'ROOM';
   amount: number;
 }
 
-// TRANSFER et CREDIT sont volontairement absents : ils ne font entrer aucun
+// TRANSFER, CREDIT et ROOM sont volontairement absents : ils ne font entrer aucun
 // argent dans un tiroir-caisse physique, donc ne génèrent aucun mouvement
 const PAYMENT_TO_CASH_MOVEMENT: Partial<Record<PaymentInput['method'], CashMovementType>> = {
   CASH: 'SALE_CASH',
@@ -19,7 +19,10 @@ export const payOrder = async (
   orderId: string,
   payments: PaymentInput[],
   userId: string,
-  cashSessionId?: string
+  cashSessionId?: string,
+  // Hôtel : séjour (déjà vérifié : en cours, même établissement) auquel la
+  // part ROOM est imputée — elle sera réglée avec la facture de séjour
+  stayId?: string
 ) => {
   const order = await prisma.order.findUniqueOrThrow({
     where: { id: orderId },
@@ -118,7 +121,10 @@ export const payOrder = async (
       }
     }
 
-    await tx.order.update({ where: { id: orderId }, data: { status: 'PAYEE' } });
+    await tx.order.update({
+      where: { id: orderId },
+      data: { status: 'PAYEE', ...(stayId && payments.some((p) => p.method === 'ROOM') ? { stayId } : {}) },
+    });
     await tx.orderStatusHistory.create({ data: { orderId, status: 'PAYEE' } });
 
     // La table redevient disponible dès l'encaissement, sans attendre le

@@ -26,6 +26,7 @@ import subscriptionRoutes from './routes/subscription.routes';
 import webhookRoutes from './routes/webhook.routes';
 import platformAdminRoutes from './routes/platformAdmin.routes';
 import customerRoutes from './routes/customer.routes';
+import hotelRoutes from './routes/hotel.routes';
 
 const app = express();
 
@@ -97,6 +98,7 @@ app.use('/api/subscription', subscriptionRoutes);
 app.use('/api/webhooks', webhookRoutes);
 app.use('/api/platform-admin', platformAdminRoutes);
 app.use('/api/customers', customerRoutes);
+app.use('/api/hotel', hotelRoutes);
 
 app.use(notFound);
 app.use(errorHandler);

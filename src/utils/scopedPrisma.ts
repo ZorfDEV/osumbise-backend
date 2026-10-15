@@ -47,6 +47,12 @@ const MODEL_SCOPES: Record<
 
   Customer: { path: 'establishmentId', scope: 'establishment' },
   CustomerPayment: { path: 'customer.establishmentId', scope: 'establishment' },
+
+  // Hôtel
+  Room: { path: 'establishmentId', scope: 'establishment' },
+  RoomCategoryTax: { path: 'establishmentId', scope: 'establishment' },
+  Stay: { path: 'establishmentId', scope: 'establishment' },
+  StayPayment: { path: 'stay.establishmentId', scope: 'establishment' },
 };
 
 // Opérations pour lesquelles Prisma accepte de façon fiable des filtres `where`

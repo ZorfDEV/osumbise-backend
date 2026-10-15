@@ -112,6 +112,9 @@ model Establishment {
   expenseCategories ExpenseCategory[]
   expenses       Expense[]
   customers      Customer[]
+  rooms          Room[]
+  roomCategoryTaxes RoomCategoryTax[]
+  stays          Stay[]
   createdAt      DateTime          @default(now()) @map("created_at")
   updatedAt      DateTime          @updatedAt @map("updated_at")
 
@@ -153,6 +156,8 @@ model User {
   cashSessionsOpened CashSession[]   @relation("OpenedBy")
   cashSessionsClosed CashSession[]   @relation("ClosedBy")
   auditLogs          AuditLog[]
+  stays              Stay[]
+  stayPayments       StayPayment[]
   createdAt          DateTime        @default(now()) @map("created_at")
   updatedAt          DateTime        @updatedAt @map("updated_at")
 
@@ -288,6 +293,10 @@ model Order {
   // impossible de créditer un compte client sans savoir lequel.
   customerId      String?       @map("customer_id")
   customer        Customer?     @relation(fields: [customerId], references: [id])
+  // Hôtel : consommation mise "sur la chambre" (paiement ROOM), ajoutée à la
+  // facture de ce séjour
+  stayId          String?       @map("stay_id")
+  stay            Stay?         @relation(fields: [stayId], references: [id])
   status          OrderStatus   @default(BROUILLON)
   subtotal        Decimal       @default(0) @db.Decimal(12, 2)
   discount        Decimal       @default(0) @db.Decimal(12, 2)
@@ -334,6 +343,9 @@ enum PaymentMethod {
   MOBILE_MONEY
   TRANSFER
   CREDIT
+  // Hôtel : consommation imputée à la chambre d'un client en séjour, réglée
+  // au départ avec la facture de séjour (aucun argent ne change de mains ici)
+  ROOM
 }
 
 model Payment {
@@ -585,4 +597,119 @@ model Expense {
   createdAt         DateTime        @default(now()) @map("created_at")
 
   @@map("expenses")
+}
+
+// ===================================================================
+// Hôtel
+// ===================================================================
+
+enum RoomCategory {
+  STANDARD
+  VIP
+  SUITE
+}
+
+// État physique de la chambre (plan des chambres). Passe automatiquement à
+// OCCUPIED à l'arrivée et à CLEANING au départ ; AVAILABLE et OUT_OF_SERVICE
+// se règlent à la main (ménage terminé, travaux…).
+enum RoomStatus {
+  AVAILABLE
+  OCCUPIED
+  CLEANING
+  OUT_OF_SERVICE
+}
+
+model Room {
+  id              String        @id @default(uuid())
+  establishmentId String        @map("establishment_id")
+  establishment   Establishment @relation(fields: [establishmentId], references: [id])
+  number          String
+  category        RoomCategory  @default(STANDARD)
+  floor           String?
+  capacity        Int           @default(2)
+  nightlyRate     Decimal       @map("nightly_rate") @db.Decimal(12, 2)
+  status          RoomStatus    @default(AVAILABLE)
+  notes           String?
+  // Chambre retirée de la vente sans perdre son historique de séjours
+  isActive        Boolean       @default(true) @map("is_active")
+  stays           Stay[]
+  createdAt       DateTime      @default(now()) @map("created_at")
+  updatedAt       DateTime      @updatedAt @map("updated_at")
+
+  @@unique([establishmentId, number])
+  @@map("rooms")
+}
+
+// Taxe de séjour : montant fixe par nuit et par chambre, selon le type de
+// chambre. Recopiée dans le séjour à la réservation (un changement de barème
+// ne modifie pas les séjours déjà enregistrés).
+model RoomCategoryTax {
+  id              String        @id @default(uuid())
+  establishmentId String        @map("establishment_id")
+  establishment   Establishment @relation(fields: [establishmentId], references: [id])
+  category        RoomCategory
+  taxPerNight     Decimal       @default(0) @map("tax_per_night") @db.Decimal(12, 2)
+  updatedAt       DateTime      @updatedAt @map("updated_at")
+
+  @@unique([establishmentId, category])
+  @@map("room_category_taxes")
+}
+
+enum StayStatus {
+  RESERVED
+  CHECKED_IN
+  CHECKED_OUT
+  CANCELLED
+}
+
+model Stay {
+  id              String        @id @default(uuid())
+  establishmentId String        @map("establishment_id")
+  establishment   Establishment @relation(fields: [establishmentId], references: [id])
+  roomId          String        @map("room_id")
+  room            Room          @relation(fields: [roomId], references: [id])
+  guestName       String        @map("guest_name")
+  guestPhone      String?       @map("guest_phone")
+  // Pièce d'identité (fiche de police)
+  guestIdNumber   String?       @map("guest_id_number")
+  adults          Int           @default(1)
+  children        Int           @default(0)
+  // Dates prévues (jour d'arrivée, jour de départ)
+  checkInDate     DateTime      @map("check_in_date") @db.Date
+  checkOutDate    DateTime      @map("check_out_date") @db.Date
+  // Heures réelles d'arrivée et de départ
+  checkedInAt     DateTime?     @map("checked_in_at")
+  checkedOutAt    DateTime?     @map("checked_out_at")
+  // Tarif et taxe figés à la réservation
+  nightlyRate     Decimal       @map("nightly_rate") @db.Decimal(12, 2)
+  taxPerNight     Decimal       @default(0) @map("tax_per_night") @db.Decimal(12, 2)
+  status          StayStatus    @default(RESERVED)
+  notes           String?
+  userId          String        @map("user_id") // réceptionniste qui a créé le séjour
+  user            User          @relation(fields: [userId], references: [id])
+  payments        StayPayment[]
+  // Consommations du bar/restaurant mises sur la chambre
+  orders          Order[]
+  createdAt       DateTime      @default(now()) @map("created_at")
+  updatedAt       DateTime      @updatedAt @map("updated_at")
+
+  @@index([establishmentId, checkInDate])
+  @@index([roomId, status])
+  @@map("stays")
+}
+
+// Versement sur un séjour : acompte à la réservation ou à l'arrivée, solde au
+// départ — autant que nécessaire. Jamais ROOM (c'est l'inverse d'un paiement).
+model StayPayment {
+  id        String        @id @default(uuid())
+  stayId    String        @map("stay_id")
+  stay      Stay          @relation(fields: [stayId], references: [id])
+  method    PaymentMethod
+  amount    Decimal       @db.Decimal(12, 2)
+  note      String?
+  userId    String        @map("user_id")
+  user      User          @relation(fields: [userId], references: [id])
+  createdAt DateTime      @default(now()) @map("created_at")
+
+  @@map("stay_payments")
 }
