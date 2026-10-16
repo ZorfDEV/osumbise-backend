@@ -11,12 +11,17 @@ export const recalculateOrderTotals = async (orderId: string) => {
     0
   );
 
-  // Conserve une remise/taxe déjà posée sur la commande (pas encore de endpoint
-  // dédié pour les définir dans ce MVP, mais le calcul est prêt à les recevoir)
-  const total = subtotal - Number(order.discount) + Number(order.tax);
+  // Taxe des produits (taux figé sur chaque ligne), ajoutée au prix hors
+  // taxe — arrondie au franc, le FCFA n'ayant pas de centimes
+  const tax = Math.round(
+    items.reduce((sum, item) => sum + item.quantity * Number(item.unitPrice) * (Number(item.taxRate) / 100), 0)
+  );
+
+  // Conserve une remise déjà posée sur la commande
+  const total = subtotal - Number(order.discount) + tax;
 
   return prisma.order.update({
     where: { id: orderId },
-    data: { subtotal, total },
+    data: { subtotal, tax, total },
   });
 };
