@@ -541,13 +541,16 @@ model Customer {
   phone           String?
   address         String?
   creditLimit     Decimal?          @map("credit_limit") @db.Decimal(12, 2)
-  // Solde dû par le client — positif = le client doit de l'argent au grossiste.
-  // Mis à jour par payment.service.ts (vente à crédit) et
-  // customer.controller.ts (règlement reçu), jamais modifié directement ailleurs.
+  // Solde dû par le client — positif = le client doit de l'argent à l'établissement.
+  // Mis à jour par payment.service.ts (vente à crédit), hotel.controller.ts
+  // (séjour mis sur le compte) et customer.controller.ts (règlement reçu),
+  // jamais modifié directement ailleurs.
   balance         Decimal           @default(0) @db.Decimal(12, 2)
   isActive        Boolean           @default(true) @map("is_active")
   orders          Order[]
   payments        CustomerPayment[]
+  // Séjours (ou parts de séjour) mis sur le compte — méthode CREDIT
+  stayPayments    StayPayment[]
   createdAt       DateTime          @default(now()) @map("created_at")
   updatedAt       DateTime          @updatedAt @map("updated_at")
 
@@ -707,6 +710,9 @@ model StayPayment {
   method    PaymentMethod
   amount    Decimal       @db.Decimal(12, 2)
   note      String?
+  // Méthode CREDIT : compte client débité (entreprise, client habitué…)
+  customerId String?      @map("customer_id")
+  customer   Customer?    @relation(fields: [customerId], references: [id])
   userId    String        @map("user_id")
   user      User          @relation(fields: [userId], references: [id])
   createdAt DateTime      @default(now()) @map("created_at")

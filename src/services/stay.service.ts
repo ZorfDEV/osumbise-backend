@@ -65,7 +65,10 @@ export const taxFor = async (establishmentId: string, category: Prisma.RoomCreat
 export const stayDetailInclude = {
   room: { select: { id: true, number: true, category: true, floor: true } },
   user: { select: { name: true } },
-  payments: { orderBy: { createdAt: 'asc' }, include: { user: { select: { name: true } } } },
+  payments: {
+    orderBy: { createdAt: 'asc' },
+    include: { user: { select: { name: true } }, customer: { select: { id: true, name: true } } },
+  },
   orders: {
     where: { status: { in: ['PAYEE', 'FERMEE'] } },
     orderBy: { createdAt: 'asc' },

@@ -71,14 +71,22 @@ export const createStaySchema = stayBase
 
 export const updateStaySchema = stayBase.partial().refine(datesInOrder, datesMessage);
 
-export const addStayPaymentSchema = z.object({
-  // ROOM exclu : un versement est un encaissement réel
-  method: z.enum(['CASH', 'CARD', 'MOBILE_MONEY', 'TRANSFER']),
-  amount: z.number().positive('Le montant doit être positif'),
-  note: z.string().max(200).optional(),
-  // Session de caisse ouverte : les versements espèces/carte/mobile y entrent
-  cashSessionId: z.string().uuid().optional(),
-});
+export const addStayPaymentSchema = z
+  .object({
+    // ROOM exclu : un séjour ne se paie pas « sur la chambre ».
+    // CREDIT : le montant passe sur le compte d'un client (customerId), qui
+    // le réglera plus tard — aucun argent n'entre en caisse.
+    method: z.enum(['CASH', 'CARD', 'MOBILE_MONEY', 'TRANSFER', 'CREDIT']),
+    amount: z.number().positive('Le montant doit être positif'),
+    note: z.string().max(200).optional(),
+    customerId: z.string().uuid().optional(),
+    // Session de caisse ouverte : les versements espèces/carte/mobile y entrent
+    cashSessionId: z.string().uuid().optional(),
+  })
+  .refine((p) => p.method !== 'CREDIT' || !!p.customerId, {
+    message: 'Choisissez le compte client à débiter',
+    path: ['customerId'],
+  });
 
 export type CreateRoomInput = z.infer<typeof createRoomSchema>;
 export type UpdateRoomInput = z.infer<typeof updateRoomSchema>;

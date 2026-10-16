@@ -4,6 +4,7 @@ import { prisma } from '../config/prisma';
 import { resolveEstablishmentId } from '../utils/resolveEstablishmentId';
 import { assertInScope } from '../utils/assertInScope';
 import { emitToEstablishment } from '../realtime/socket';
+import { assertCreditAllowed } from '../services/customerCredit.service';
 import {
   AddStayPaymentInput,
   CreateRoomInput,
@@ -359,8 +360,15 @@ const PAYMENT_TO_CASH_MOVEMENT: Partial<Record<AddStayPaymentInput['method'], Ca
 // POST /api/hotel/stays/:id/payments — acompte ou solde
 export const addStayPayment = async (req: Request, res: Response) => {
   const existing = await loadStay(req, req.params.id);
-  const { method, amount, note, cashSessionId } = req.body as AddStayPaymentInput;
+  const { method, amount, note, cashSessionId, customerId } = req.body as AddStayPaymentInput;
   if (existing.status === 'CANCELLED') throw httpError('Séjour annulé', 409);
+
+  // Mise sur compte client : le client doit appartenir au même établissement
+  const creditCustomer =
+    method === 'CREDIT' && customerId
+      ? await assertInScope(() => req.db.customer.findFirst({ where: { id: customerId } }), 'Client introuvable')
+      : null;
+  if (creditCustomer) assertCreditAllowed(creditCustomer, amount);
 
   if (cashSessionId) {
     await assertInScope(
@@ -371,8 +379,18 @@ export const addStayPayment = async (req: Request, res: Response) => {
 
   await prisma.$transaction(async (tx) => {
     await tx.stayPayment.create({
-      data: { stayId: existing.id, method, amount, note: note || null, userId: req.user!.id },
+      data: {
+        stayId: existing.id,
+        method,
+        amount,
+        note: note || null,
+        customerId: creditCustomer?.id ?? null,
+        userId: req.user!.id,
+      },
     });
+    if (creditCustomer) {
+      await tx.customer.update({ where: { id: creditCustomer.id }, data: { balance: { increment: amount } } });
+    }
     const movementType = PAYMENT_TO_CASH_MOVEMENT[method];
     if (cashSessionId && movementType) {
       await tx.cashMovement.create({

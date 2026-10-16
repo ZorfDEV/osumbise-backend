@@ -14,8 +14,11 @@ export const updateCustomerSchema = createCustomerSchema.partial().extend({
 
 export const recordCustomerPaymentSchema = z.object({
   amount: z.number().positive(),
-  method: z.enum(['CASH', 'CARD', 'MOBILE_MONEY', 'TRANSFER', 'CREDIT']),
+  // Un règlement est un vrai paiement : pas de CREDIT (ni ROOM)
+  method: z.enum(['CASH', 'CARD', 'MOBILE_MONEY', 'TRANSFER']),
   note: z.string().optional(),
+  // Session de caisse ouverte : les règlements espèces/carte/mobile y entrent
+  cashSessionId: z.string().uuid().optional(),
 });
 
 export type CreateCustomerInput = z.infer<typeof createCustomerSchema>;

@@ -1,4 +1,5 @@
 import { Request, Response } from 'express';
+import { CashMovementType } from '@prisma/client';
 import { prisma } from '../config/prisma';
 import { resolveEstablishmentId } from '../utils/resolveEstablishmentId';
 import { assertInScope } from '../utils/assertInScope';
@@ -13,8 +14,8 @@ export const listCustomers = async (req: Request, res: Response) => {
   res.status(200).json({ customers });
 };
 
-// Relevé de compte : commandes payées à crédit + règlements reçus, pour
-// justifier le solde affiché
+// Relevé de compte : commandes payées à crédit, séjours mis sur le compte et
+// règlements reçus, pour justifier le solde affiché
 export const getCustomer = async (req: Request, res: Response) => {
   const { id } = req.params;
 
@@ -28,6 +29,12 @@ export const getCustomer = async (req: Request, res: Response) => {
         take: 30,
       },
       payments: { orderBy: { createdAt: 'desc' }, take: 30 },
+      stayPayments: {
+        where: { method: 'CREDIT' },
+        orderBy: { createdAt: 'desc' },
+        take: 30,
+        include: { stay: { select: { id: true, guestName: true, room: { select: { number: true } } } } },
+      },
     },
   });
 
@@ -59,25 +66,43 @@ export const updateCustomer = async (req: Request, res: Response) => {
   res.status(200).json({ customer });
 };
 
+const PAYMENT_TO_CASH_MOVEMENT: Partial<Record<RecordCustomerPaymentInput['method'], CashMovementType>> = {
+  CASH: 'SALE_CASH',
+  CARD: 'SALE_CARD',
+  MOBILE_MONEY: 'SALE_MOBILE_MONEY',
+};
+
 // POST /api/customers/:id/payments — règlement reçu d'un client, réduit son solde
+// (et entre dans la caisse ouverte, comme une vente, pour que le comptage tombe juste)
 export const recordCustomerPayment = async (req: Request, res: Response) => {
   const { id } = req.params;
-  const { amount, method, note } = req.body as RecordCustomerPaymentInput;
+  const { amount, method, note, cashSessionId } = req.body as RecordCustomerPaymentInput;
 
   const customer = await assertInScope(
     () => req.db.customer.findFirst({ where: { id } }),
     'Client introuvable'
   );
 
-  const [payment] = await prisma.$transaction([
-    prisma.customerPayment.create({
+  if (cashSessionId) {
+    await assertInScope(
+      () => req.db.cashSession.findFirst({ where: { id: cashSessionId, closedAt: null } }),
+      'Session de caisse invalide, introuvable ou déjà clôturée'
+    );
+  }
+
+  const payment = await prisma.$transaction(async (tx) => {
+    const created = await tx.customerPayment.create({
       data: { customerId: id, amount, method, note, userId: req.user!.id },
-    }),
-    prisma.customer.update({
-      where: { id },
-      data: { balance: Number(customer.balance) - amount },
-    }),
-  ]);
+    });
+    await tx.customer.update({ where: { id }, data: { balance: { decrement: amount } } });
+    const movementType = PAYMENT_TO_CASH_MOVEMENT[method];
+    if (cashSessionId && movementType) {
+      await tx.cashMovement.create({
+        data: { cashSessionId, type: movementType, amount, note: `Règlement compte client — ${customer.name}` },
+      });
+    }
+    return created;
+  });
 
   res.status(201).json({ payment });
 };

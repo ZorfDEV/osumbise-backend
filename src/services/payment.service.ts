@@ -1,6 +1,7 @@
 import { CashMovementType } from '@prisma/client';
 import { prisma } from '../config/prisma';
 import { applyStockExits } from './stock.service';
+import { assertCreditAllowed } from './customerCredit.service';
 
 interface PaymentInput {
   method: 'CASH' | 'CARD' | 'MOBILE_MONEY' | 'TRANSFER' | 'CREDIT' | 'ROOM';
@@ -44,6 +45,11 @@ export const payOrder = async (
       new Error('Impossible de vendre à crédit sans client rattaché à la commande'),
       { status: 400 }
     );
+  }
+
+  if (creditAmount > 0 && order.customerId) {
+    const customer = await prisma.customer.findUniqueOrThrow({ where: { id: order.customerId } });
+    assertCreditAllowed(customer, creditAmount);
   }
 
   const totalPaid = payments.reduce((sum, p) => sum + p.amount, 0);
