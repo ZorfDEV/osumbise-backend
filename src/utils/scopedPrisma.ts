@@ -31,6 +31,7 @@ const MODEL_SCOPES: Record<
   OrderItem: { path: 'order.establishmentId', scope: 'establishment' },
   OrderStatusHistory: { path: 'order.establishmentId', scope: 'establishment' },
   Payment: { path: 'order.establishmentId', scope: 'establishment' },
+  OrderVoid: { path: 'order.establishmentId', scope: 'establishment' },
   StockMovement: { path: 'product.establishmentId', scope: 'establishment' },
   CashSession: { path: 'cashRegister.establishmentId', scope: 'establishment' },
   CashMovement: {

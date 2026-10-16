@@ -34,6 +34,18 @@ export const updateOrderStatusSchema = z.object({
   ]),
 });
 
+// Motif obligatoire : liste de motifs côté interface, + précision libre
+const reason = z.string().trim().min(3, 'Indiquez le motif').max(200);
+
+export const voidOrderItemSchema = z.object({
+  quantity: z.number().int().positive(),
+  reason,
+});
+
+export const cancelOrderSchema = z.object({ reason });
+
+export type VoidOrderItemInput = z.infer<typeof voidOrderItemSchema>;
+export type CancelOrderInput = z.infer<typeof cancelOrderSchema>;
 export type CreateOrderInput = z.infer<typeof createOrderSchema>;
 export type AddOrderItemInput = z.infer<typeof addOrderItemSchema>;
 export type UpdateOrderItemInput = z.infer<typeof updateOrderItemSchema>;

@@ -8,6 +8,8 @@ import {
   updateOrderItemSchema,
   updateOrderStatusSchema,
   setOrderCustomerSchema,
+  voidOrderItemSchema,
+  cancelOrderSchema,
 } from '../validators/order.validator';
 import { payOrderSchema } from '../validators/payment.validator';
 import {
@@ -20,6 +22,9 @@ import {
   updateOrderStatus,
   payOrderHandler,
   setOrderCustomer,
+  voidOrderItemHandler,
+  cancelOrderHandler,
+  listOrderVoids,
 } from '../controllers/order.controller';
 import { asyncHandler } from '../utils/jwt';
 
@@ -29,7 +34,11 @@ router.use(protect, scopeTenant);
 
 const FLOOR_STAFF = ['OWNER', 'ADMIN', 'SERVER', 'CASHIER'] as const;
 
+// Propriétaire et administrateur : annulations et retraits d'articles
+const MANAGERS = ['OWNER', 'ADMIN'] as const;
+
 router.get('/', asyncHandler(listOrders));
+router.get('/voids', authorize(...MANAGERS), asyncHandler(listOrderVoids));
 router.get('/:id', asyncHandler(getOrder));
 
 router.post('/', authorize(...FLOOR_STAFF), validate(createOrderSchema), asyncHandler(createOrder));
@@ -47,6 +56,14 @@ router.patch(
   asyncHandler(updateOrderItem)
 );
 router.delete('/:id/items/:itemId', authorize(...FLOOR_STAFF), asyncHandler(removeOrderItem));
+
+router.post(
+  '/:id/items/:itemId/void',
+  authorize(...MANAGERS),
+  validate(voidOrderItemSchema),
+  asyncHandler(voidOrderItemHandler)
+);
+router.post('/:id/cancel', authorize(...MANAGERS), validate(cancelOrderSchema), asyncHandler(cancelOrderHandler));
 
 router.patch(
   '/:id/customer',

@@ -13,7 +13,10 @@ import {
   AddOrderItemInput,
   UpdateOrderItemInput,
   UpdateOrderStatusInput,
+  VoidOrderItemInput,
+  CancelOrderInput,
 } from '../validators/order.validator';
+import { cancelOrderWithReason, voidOrderItem } from '../services/orderVoid.service';
 
 // Workflow exact du cahier des charges (section 8), avec ANNULEE comme sortie
 // possible depuis n'importe quel statut avant paiement.
@@ -64,6 +67,7 @@ export const getOrder = async (req: Request, res: Response) => {
       customer: { select: { id: true, name: true, balance: true } },
       // Hôtel : consommation mise sur une chambre (affichée sur le ticket)
       stay: { select: { id: true, guestName: true, room: { select: { number: true } } } },
+      voids: { orderBy: { createdAt: 'asc' }, include: { user: { select: { name: true } } } },
     },
   });
 
@@ -222,6 +226,15 @@ export const updateOrderStatus = async (req: Request, res: Response) => {
     });
   }
 
+  // Une commande envoyée en cuisine ne s'annule que par POST /:id/cancel
+  // (propriétaire/administrateur, avec motif). Seul un brouillon abandonné
+  // peut être annulé ici, par n'importe quel membre de la salle.
+  if (status === 'ANNULEE' && order.status !== 'BROUILLON') {
+    return res.status(403).json({
+      message: 'Annulation réservée au propriétaire ou à l’administrateur, avec un motif',
+    });
+  }
+
   await prisma.$transaction(async (tx) => {
     await tx.order.update({ where: { id }, data: { status } });
     await tx.orderStatusHistory.create({ data: { orderId: id, status } });
@@ -235,6 +248,50 @@ export const updateOrderStatus = async (req: Request, res: Response) => {
   const updatedOrder = await prisma.order.findUnique({ where: { id }, include: { table: true } });
   emitToEstablishment(order.establishmentId, 'order:status_changed', { orderId: id, status });
   res.status(200).json({ order: updatedOrder });
+};
+
+// POST /api/orders/:id/items/:itemId/void — retirer un article (motif obligatoire)
+export const voidOrderItemHandler = async (req: Request, res: Response) => {
+  const { id, itemId } = req.params;
+  const { quantity, reason } = req.body as VoidOrderItemInput;
+  const order = await assertInScope(() => req.db.order.findFirst({ where: { id } }), 'Commande introuvable');
+
+  const updated = await voidOrderItem({ orderId: id, itemId, quantity, reason, userId: req.user!.id });
+  emitToEstablishment(order.establishmentId, 'order:updated', { orderId: id });
+  res.status(200).json({ order: updated });
+};
+
+// POST /api/orders/:id/cancel — annuler la commande (motif obligatoire)
+export const cancelOrderHandler = async (req: Request, res: Response) => {
+  const { id } = req.params;
+  const { reason } = req.body as CancelOrderInput;
+  const order = await assertInScope(() => req.db.order.findFirst({ where: { id } }), 'Commande introuvable');
+
+  await cancelOrderWithReason({ orderId: id, reason, userId: req.user!.id });
+  emitToEstablishment(order.establishmentId, 'order:status_changed', { orderId: id, status: 'ANNULEE' });
+  res.status(200).json({ ok: true });
+};
+
+// GET /api/orders/voids?from=YYYY-MM-DD&to=YYYY-MM-DD — journal pour les rapports
+export const listOrderVoids = async (req: Request, res: Response) => {
+  const { from, to } = req.query as { from?: string; to?: string };
+  const createdAt: { gte?: Date; lt?: Date } = {};
+  if (from) createdAt.gte = new Date(`${from}T00:00:00`);
+  if (to) {
+    const end = new Date(`${to}T00:00:00`);
+    end.setDate(end.getDate() + 1);
+    createdAt.lt = end;
+  }
+  const voids = await req.db.orderVoid.findMany({
+    where: from || to ? { createdAt } : {},
+    orderBy: { createdAt: 'desc' },
+    take: 200,
+    include: {
+      user: { select: { name: true } },
+      order: { select: { id: true, table: { select: { label: true } } } },
+    },
+  });
+  res.status(200).json({ voids });
 };
 
 // POST /api/orders/:id/pay — seule voie possible vers PAYEE : encaisse,
