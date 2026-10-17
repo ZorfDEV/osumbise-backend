@@ -4,6 +4,11 @@ export const createEstablishmentSchema = z.object({
   name: z.string().min(2, 'Le nom doit contenir au moins 2 caractères'),
   type: z.enum(['BAR', 'RESTAURANT', 'HOTEL', 'GROSSISTE', 'EPICERIE']),
   address: z.string().optional(),
+  // Facultatifs ; null (ou vide) efface la valeur
+  phone: z.string().trim().max(40).nullable().optional(),
+  postalBox: z.string().trim().max(60).nullable().optional(),
+  nif: z.string().trim().max(40).nullable().optional(),
+  rc: z.string().trim().max(60).nullable().optional(),
   logo: z.string().url('URL invalide').optional().or(z.literal('')),
 });
 

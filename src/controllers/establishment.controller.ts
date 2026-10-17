@@ -19,7 +19,7 @@ export const listEstablishments = async (req: Request, res: Response) => {
 };
 
 export const createEstablishment = async (req: Request, res: Response) => {
-  const { name, type, address, logo } = req.body as CreateEstablishmentInput;
+  const { name, type, address, logo, phone, postalBox, nif, rc } = req.body as CreateEstablishmentInput;
 
   const limitError = await checkEstablishmentLimit(req.user!.organizationId);
   if (limitError) {
@@ -34,6 +34,10 @@ export const createEstablishment = async (req: Request, res: Response) => {
       type,
       address,
       logo,
+      phone: phone || null,
+      postalBox: postalBox || null,
+      nif: nif || null,
+      rc: rc || null,
       organizationId: req.user!.organizationId,
     },
   });
