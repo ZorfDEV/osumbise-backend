@@ -678,6 +678,9 @@ model Room {
   establishmentId String        @map("establishment_id")
   establishment   Establishment @relation(fields: [establishmentId], references: [id])
   number          String
+  // Bâtiment (hôtel à plusieurs bâtiments) ; "" = aucun. Non nul pour que
+  // l'unicité numéro + bâtiment s'applique aussi aux chambres sans bâtiment
+  building        String        @default("")
   category        RoomCategory  @default(STANDARD)
   floor           String?
   capacity        Int           @default(2)
@@ -690,7 +693,8 @@ model Room {
   createdAt       DateTime      @default(now()) @map("created_at")
   updatedAt       DateTime      @updatedAt @map("updated_at")
 
-  @@unique([establishmentId, number])
+  // Même numéro possible dans deux bâtiments différents
+  @@unique([establishmentId, building, number])
   @@map("rooms")
 }
 

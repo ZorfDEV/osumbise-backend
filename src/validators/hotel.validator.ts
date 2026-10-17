@@ -12,6 +12,8 @@ export const createRoomSchema = z.object({
   number: z.string().trim().min(1, 'Le numéro de chambre est requis').max(20),
   category: z.enum(ROOM_CATEGORIES),
   floor: z.string().trim().max(20).optional(),
+  // Facultatif : nom du bâtiment (ex. Bâtiment A, Annexe)
+  building: z.string().trim().max(40).optional(),
   capacity: z.number().int().min(1).max(20).default(2),
   nightlyRate: z.number().nonnegative('Le tarif ne peut pas être négatif'),
   notes: z.string().max(500).optional(),

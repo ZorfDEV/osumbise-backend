@@ -39,7 +39,7 @@ const loadStay = (req: Request, id: string) =>
 // GET /api/hotel/rooms — avec le séjour en cours et la prochaine arrivée
 export const listRooms = async (req: Request, res: Response) => {
   const rooms = await req.db.room.findMany({
-    orderBy: [{ floor: 'asc' }, { number: 'asc' }],
+    orderBy: [{ building: 'asc' }, { floor: 'asc' }, { number: 'asc' }],
     include: {
       stays: {
         where: { status: { in: ['RESERVED', 'CHECKED_IN'] }, checkOutDate: { gte: today() } },
@@ -56,15 +56,17 @@ export const createRoom = async (req: Request, res: Response) => {
   const data = req.body as CreateRoomInput;
   const establishmentId = await resolveEstablishmentId(req);
 
+  const building = data.building ?? '';
   const exists = await prisma.room.findUnique({
-    where: { establishmentId_number: { establishmentId, number: data.number } },
+    where: { establishmentId_building_number: { establishmentId, building, number: data.number } },
   });
-  if (exists) throw httpError(`La chambre ${data.number} existe déjà`, 409);
+  if (exists) throw httpError(`La chambre ${data.number}${building ? ` (${building})` : ''} existe déjà`, 409);
 
   const room = await prisma.room.create({
     data: {
       establishmentId,
       number: data.number,
+      building,
       category: data.category,
       floor: data.floor || null,
       capacity: data.capacity,
@@ -81,11 +83,13 @@ export const updateRoom = async (req: Request, res: Response) => {
   const data = req.body as UpdateRoomInput;
   const existing = await assertInScope(() => req.db.room.findFirst({ where: { id } }), 'Chambre introuvable');
 
-  if (data.number && data.number !== existing.number) {
+  const number = data.number ?? existing.number;
+  const building = data.building ?? existing.building;
+  if (number !== existing.number || building !== existing.building) {
     const taken = await prisma.room.findUnique({
-      where: { establishmentId_number: { establishmentId: existing.establishmentId, number: data.number } },
+      where: { establishmentId_building_number: { establishmentId: existing.establishmentId, building, number } },
     });
-    if (taken) throw httpError(`La chambre ${data.number} existe déjà`, 409);
+    if (taken) throw httpError(`La chambre ${number}${building ? ` (${building})` : ''} existe déjà`, 409);
   }
 
   const room = await prisma.room.update({
@@ -161,7 +165,7 @@ export const listStays = async (req: Request, res: Response) => {
   const stays = await req.db.stay.findMany({
     where,
     orderBy: { checkInDate: 'asc' },
-    include: { room: { select: { id: true, number: true, category: true } }, payments: { select: { amount: true } } },
+    include: { room: { select: { id: true, number: true, building: true, category: true } }, payments: { select: { amount: true } } },
     take: 500,
   });
   res.status(200).json({ stays });

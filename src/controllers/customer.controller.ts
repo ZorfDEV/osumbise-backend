@@ -33,7 +33,7 @@ export const getCustomer = async (req: Request, res: Response) => {
         where: { method: 'CREDIT' },
         orderBy: { createdAt: 'desc' },
         take: 30,
-        include: { stay: { select: { id: true, guestName: true, room: { select: { number: true } } } } },
+        include: { stay: { select: { id: true, guestName: true, room: { select: { number: true, building: true } } } } },
       },
     },
   });
