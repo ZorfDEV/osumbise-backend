@@ -3,6 +3,7 @@ import { CashMovementType, Prisma, RoomCategory } from '@prisma/client';
 import { prisma } from '../config/prisma';
 import { resolveEstablishmentId } from '../utils/resolveEstablishmentId';
 import { assertInScope } from '../utils/assertInScope';
+import { assertUsableCashSession } from '../utils/cashSessionAccess';
 import { emitToEstablishment } from '../realtime/socket';
 import { assertCreditAllowed } from '../services/customerCredit.service';
 import {
@@ -375,10 +376,7 @@ export const addStayPayment = async (req: Request, res: Response) => {
   if (creditCustomer) assertCreditAllowed(creditCustomer, amount);
 
   if (cashSessionId) {
-    await assertInScope(
-      () => req.db.cashSession.findFirst({ where: { id: cashSessionId, closedAt: null } }),
-      'Session de caisse invalide, introuvable ou déjà clôturée'
-    );
+    await assertUsableCashSession(req, cashSessionId);
   }
 
   await prisma.$transaction(async (tx) => {

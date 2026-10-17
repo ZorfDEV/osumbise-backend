@@ -3,6 +3,7 @@ import { CashMovementType } from '@prisma/client';
 import { prisma } from '../config/prisma';
 import { resolveEstablishmentId } from '../utils/resolveEstablishmentId';
 import { assertInScope } from '../utils/assertInScope';
+import { assertUsableCashSession } from '../utils/cashSessionAccess';
 import {
   CreateCustomerInput,
   UpdateCustomerInput,
@@ -84,10 +85,7 @@ export const recordCustomerPayment = async (req: Request, res: Response) => {
   );
 
   if (cashSessionId) {
-    await assertInScope(
-      () => req.db.cashSession.findFirst({ where: { id: cashSessionId, closedAt: null } }),
-      'Session de caisse invalide, introuvable ou déjà clôturée'
-    );
+    await assertUsableCashSession(req, cashSessionId);
   }
 
   const payment = await prisma.$transaction(async (tx) => {

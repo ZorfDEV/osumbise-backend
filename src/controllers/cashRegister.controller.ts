@@ -9,6 +9,7 @@ export const listCashRegisters = async (req: Request, res: Response) => {
       sessions: {
         where: { closedAt: null },
         take: 1,
+        select: { id: true, openedAt: true, openedById: true, openedBy: { select: { name: true } } },
       },
     },
     orderBy: { name: 'asc' },

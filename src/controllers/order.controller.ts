@@ -3,6 +3,7 @@ import { OrderStatus } from '@prisma/client';
 import { prisma } from '../config/prisma';
 import { resolveEstablishmentId } from '../utils/resolveEstablishmentId';
 import { assertInScope } from '../utils/assertInScope';
+import { assertUsableCashSession } from '../utils/cashSessionAccess';
 import { recalculateOrderTotals } from '../services/order.service';
 import { payOrder } from '../services/payment.service';
 import { PayOrderInput } from '../validators/payment.validator';
@@ -365,10 +366,7 @@ export const payOrderHandler = async (req: Request, res: Response) => {
   }
 
   if (cashSessionId) {
-    await assertInScope(
-      () => req.db.cashSession.findFirst({ where: { id: cashSessionId, closedAt: null } }),
-      'Session de caisse invalide, introuvable ou déjà clôturée'
-    );
+    await assertUsableCashSession(req, cashSessionId);
   }
 
   // Consommation "sur la chambre" : le client doit être en séjour dans cet établissement
