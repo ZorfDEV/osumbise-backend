@@ -32,7 +32,14 @@ export const updateCategory = async (req: Request, res: Response) => {
     return res.status(404).json({ message: 'Catégorie introuvable' });
   }
 
-  const category = await prisma.category.update({ where: { id }, data });
+  const category = await prisma.$transaction(async (tx) => {
+    const updated = await tx.category.update({ where: { id }, data });
+    // Cuisine / bar choisi pour la catégorie : tous ses produits suivent
+    if (data.preparationArea) {
+      await tx.product.updateMany({ where: { categoryId: id }, data: { preparationArea: data.preparationArea } });
+    }
+    return updated;
+  });
   res.status(200).json({ category });
 };
 

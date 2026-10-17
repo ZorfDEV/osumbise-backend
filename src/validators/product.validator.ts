@@ -17,6 +17,8 @@ const productFields = z.object({
   tagStartsAt: z.coerce.date().nullable().optional(),
   tagEndsAt: z.coerce.date().nullable().optional(),
   type: z.enum(['VEGETARIEN', 'SANS_SUCRE', 'ALCOOLISE', 'MUSULMAN']).optional(),
+  // Cuisine (plats) ou bar (boissons servies par le serveur)
+  preparationArea: z.enum(['KITCHEN', 'BAR']).optional(),
   // Optionnel : uniquement nécessaire quand l'utilisateur connecté est OWNER
   establishmentId: z.string().uuid().optional(),
 });

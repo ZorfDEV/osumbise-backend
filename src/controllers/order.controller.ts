@@ -25,7 +25,8 @@ import { cancelOrderWithReason, cancelPaidOrder, voidOrderItem } from '../servic
 // /api/orders/:id/pay (prochaine étape), jamais par ce endpoint générique.
 const ALLOWED_TRANSITIONS: Record<OrderStatus, OrderStatus[]> = {
   BROUILLON: ['EN_ATTENTE', 'ANNULEE'],
-  EN_ATTENTE: ['EN_PREPARATION', 'ANNULEE'],
+  // SERVIE direct : commande de boissons seules (vérifié dans updateOrderStatus)
+  EN_ATTENTE: ['EN_PREPARATION', 'SERVIE', 'ANNULEE'],
   EN_PREPARATION: ['PRETE', 'ANNULEE'],
   PRETE: ['SERVIE', 'ANNULEE'],
   SERVIE: ['ANNULEE'],
@@ -225,6 +226,17 @@ export const updateOrderStatus = async (req: Request, res: Response) => {
     return res.status(409).json({
       message: `Transition invalide : ${order.status} → ${status}`,
     });
+  }
+
+  // Commande sans aucun plat (boissons seules) : servie directement par le
+  // serveur, sans passer par la cuisine
+  if (status === 'SERVIE' && order.status === 'EN_ATTENTE') {
+    const kitchenItems = await prisma.orderItem.count({
+      where: { orderId: id, product: { preparationArea: 'KITCHEN' } },
+    });
+    if (kitchenItems > 0) {
+      return res.status(409).json({ message: 'Des plats de cette commande sont encore en cuisine' });
+    }
   }
 
   // Une commande envoyée en cuisine ne s'annule que par POST /:id/cancel

@@ -169,11 +169,22 @@ model User {
 // PRODUITS, CATÉGORIES & RECETTES
 // ============================================================
 
+// Où part un produit quand la commande est envoyée : cuisine (plats, écran
+// Cuisine et bon de cuisine) ou bar (boissons, servies par le serveur, jamais
+// affichées en cuisine)
+enum PreparationArea {
+  KITCHEN
+  BAR
+}
+
 model Category {
   id              String        @id @default(uuid())
   establishmentId String        @map("establishment_id")
   establishment   Establishment @relation(fields: [establishmentId], references: [id])
   name            String
+  // Valeur par défaut des produits de la catégorie ; la changer met à jour
+  // tous ses produits
+  preparationArea PreparationArea @default(KITCHEN) @map("preparation_area")
   products        Product[]
   createdAt       DateTime      @default(now()) @map("created_at")
 
@@ -219,6 +230,7 @@ model Product {
   tagStartsAt     DateTime?     @map("tag_starts_at") @db.Date
   tagEndsAt       DateTime?     @map("tag_ends_at") @db.Date
   type            ProductType?
+  preparationArea PreparationArea @default(KITCHEN) @map("preparation_area")
   isActive        Boolean       @default(true) @map("is_active")
 
   // Recette : si ce produit est composé d'autres produits (ex. Poulet braisé -> Riz, Huile...)
