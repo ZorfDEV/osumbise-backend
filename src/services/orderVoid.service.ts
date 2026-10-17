@@ -150,3 +150,90 @@ export const cancelOrderWithReason = async (params: { orderId: string; reason: s
 
   return order;
 };
+
+// Annuler une vente DÉJÀ ENCAISSÉE (commande de test, remboursement) :
+// la commande passe en ANNULEE et sort donc des rapports, du tableau de bord,
+// du relevé client et de la note de chambre (tous ne comptent que PAYEE/FERMEE).
+// On défait ensuite ce que l'encaissement avait produit :
+// - stock : les sorties de vente sont remises en stock (si restock) ;
+// - caisse : les espèces encaissées sont sorties (REFUND) de leur session si
+//   elle est encore ouverte — une session clôturée n'est jamais modifiée ;
+// - compte client : la part « compte client » est retirée du solde dû.
+export const cancelPaidOrder = async (params: {
+  orderId: string;
+  reason: string;
+  userId: string;
+  restock: boolean;
+}) => {
+  const order = await prisma.order.findUniqueOrThrow({
+    where: { id: params.orderId },
+    include: {
+      payments: true,
+      stockMovements: { where: { type: 'SORTIE_VENTE' } },
+      cashMovements: { include: { cashSession: { select: { id: true, closedAt: true } } } },
+    },
+  });
+  if (order.status !== 'PAYEE' && order.status !== 'FERMEE') {
+    throw httpError('Seule une vente encaissée peut être annulée ici', 409);
+  }
+
+  const cashBySession = new Map<string, number>();
+  let closedSessionCash = 0;
+  for (const m of order.cashMovements) {
+    if (m.type !== 'SALE_CASH') continue;
+    if (m.cashSession.closedAt) closedSessionCash += Number(m.amount);
+    else cashBySession.set(m.cashSessionId, (cashBySession.get(m.cashSessionId) ?? 0) + Number(m.amount));
+  }
+  const creditAmount = order.payments
+    .filter((p) => p.method === 'CREDIT')
+    .reduce((sum, p) => sum + Number(p.amount), 0);
+
+  await prisma.$transaction(async (tx) => {
+    await tx.order.update({ where: { id: order.id }, data: { status: 'ANNULEE' } });
+    await tx.orderStatusHistory.create({ data: { orderId: order.id, status: 'ANNULEE' } });
+    await tx.orderVoid.create({
+      data: {
+        orderId: order.id,
+        type: 'ORDER',
+        amount: Number(order.total),
+        reason: params.reason,
+        wasPrepared: false,
+        userId: params.userId,
+      },
+    });
+
+    if (params.restock) {
+      for (const m of order.stockMovements) {
+        const product = await tx.product.update({
+          where: { id: m.productId },
+          data: { stockCurrent: { increment: m.quantity } },
+        });
+        const after = Number(product.stockCurrent);
+        await tx.stockMovement.create({
+          data: {
+            productId: m.productId,
+            type: 'ENTREE',
+            quantity: m.quantity,
+            stockBefore: after - Number(m.quantity),
+            stockAfter: after,
+            orderId: order.id,
+            reason: `Vente annulée : ${params.reason}`,
+            userId: params.userId,
+          },
+        });
+      }
+    }
+
+    for (const [cashSessionId, amount] of cashBySession) {
+      await tx.cashMovement.create({
+        data: { cashSessionId, type: 'REFUND', amount: -amount, orderId: order.id, note: `Vente annulée : ${params.reason}` },
+      });
+    }
+
+    if (creditAmount > 0 && order.customerId) {
+      await tx.customer.update({ where: { id: order.customerId }, data: { balance: { decrement: creditAmount } } });
+    }
+  });
+
+  return { order, closedSessionCash };
+};

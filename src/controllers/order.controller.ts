@@ -16,7 +16,7 @@ import {
   VoidOrderItemInput,
   CancelOrderInput,
 } from '../validators/order.validator';
-import { cancelOrderWithReason, voidOrderItem } from '../services/orderVoid.service';
+import { cancelOrderWithReason, cancelPaidOrder, voidOrderItem } from '../services/orderVoid.service';
 
 // Workflow exact du cahier des charges (section 8), avec ANNULEE comme sortie
 // possible depuis n'importe quel statut avant paiement.
@@ -265,8 +265,15 @@ export const voidOrderItemHandler = async (req: Request, res: Response) => {
 // POST /api/orders/:id/cancel — annuler la commande (motif obligatoire)
 export const cancelOrderHandler = async (req: Request, res: Response) => {
   const { id } = req.params;
-  const { reason } = req.body as CancelOrderInput;
+  const { reason, restock } = req.body as CancelOrderInput;
   const order = await assertInScope(() => req.db.order.findFirst({ where: { id } }), 'Commande introuvable');
+
+  // Vente déjà encaissée : annulation avec remise en stock et correction de caisse
+  if (order.status === 'PAYEE' || order.status === 'FERMEE') {
+    const { closedSessionCash } = await cancelPaidOrder({ orderId: id, reason, userId: req.user!.id, restock: restock ?? true });
+    emitToEstablishment(order.establishmentId, 'order:status_changed', { orderId: id, status: 'ANNULEE' });
+    return res.status(200).json({ ok: true, closedSessionCash });
+  }
 
   await cancelOrderWithReason({ orderId: id, reason, userId: req.user!.id });
   emitToEstablishment(order.establishmentId, 'order:status_changed', { orderId: id, status: 'ANNULEE' });
@@ -289,10 +296,43 @@ export const listOrderVoids = async (req: Request, res: Response) => {
     take: 200,
     include: {
       user: { select: { name: true } },
-      order: { select: { id: true, table: { select: { label: true } } } },
+      order: { select: { id: true, table: { select: { label: true } }, _count: { select: { payments: true } } } },
     },
   });
   res.status(200).json({ voids });
+};
+
+// GET /api/orders/sales?from=YYYY-MM-DD&to=YYYY-MM-DD — ventes encaissées
+// (y compris celles annulées après encaissement), par date d'encaissement
+export const listSales = async (req: Request, res: Response) => {
+  const { from, to } = req.query as { from?: string; to?: string };
+  const createdAt: { gte?: Date; lt?: Date } = {};
+  if (from) createdAt.gte = new Date(`${from}T00:00:00`);
+  if (to) {
+    const end = new Date(`${to}T00:00:00`);
+    end.setDate(end.getDate() + 1);
+    createdAt.lt = end;
+  }
+  const orders = await req.db.order.findMany({
+    where: {
+      status: { in: ['PAYEE', 'FERMEE', 'ANNULEE'] },
+      payments: { some: from || to ? { createdAt } : {} },
+    },
+    orderBy: { updatedAt: 'desc' },
+    take: 300,
+    select: {
+      id: true,
+      status: true,
+      total: true,
+      updatedAt: true,
+      table: { select: { label: true } },
+      user: { select: { name: true } },
+      customer: { select: { name: true } },
+      payments: { select: { method: true, amount: true, createdAt: true } },
+      voids: { where: { type: 'ORDER' }, select: { reason: true } },
+    },
+  });
+  res.status(200).json({ orders });
 };
 
 // POST /api/orders/:id/pay — seule voie possible vers PAYEE : encaisse,

@@ -42,7 +42,11 @@ export const voidOrderItemSchema = z.object({
   reason,
 });
 
-export const cancelOrderSchema = z.object({ reason });
+export const cancelOrderSchema = z.object({
+  reason,
+  // Vente déjà encaissée : remettre les produits en stock (oui par défaut)
+  restock: z.boolean().optional(),
+});
 
 export type VoidOrderItemInput = z.infer<typeof voidOrderItemSchema>;
 export type CancelOrderInput = z.infer<typeof cancelOrderSchema>;

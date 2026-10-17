@@ -25,6 +25,7 @@ import {
   voidOrderItemHandler,
   cancelOrderHandler,
   listOrderVoids,
+  listSales,
 } from '../controllers/order.controller';
 import { asyncHandler } from '../utils/jwt';
 
@@ -39,6 +40,7 @@ const MANAGERS = ['OWNER', 'ADMIN'] as const;
 
 router.get('/', asyncHandler(listOrders));
 router.get('/voids', authorize(...MANAGERS), asyncHandler(listOrderVoids));
+router.get('/sales', authorize(...MANAGERS), asyncHandler(listSales));
 router.get('/:id', asyncHandler(getOrder));
 
 router.post('/', authorize(...FLOOR_STAFF), validate(createOrderSchema), asyncHandler(createOrder));
