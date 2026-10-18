@@ -370,12 +370,18 @@ export const payOrderHandler = async (req: Request, res: Response) => {
     await assertUsableCashSession(req, cashSessionId);
   }
 
-  // Consommation "sur la chambre" : le client doit être en séjour dans cet établissement
+  // Consommation "sur la chambre" : le client doit être en séjour dans un
+  // hôtel du même propriétaire (le restaurant de l'hôtel peut être un autre
+  // établissement de l'organisation)
   if (stayId) {
-    await assertInScope(
-      () => req.db.stay.findFirst({ where: { id: stayId, status: 'CHECKED_IN' } }),
-      'Séjour introuvable ou terminé : la consommation ne peut pas être mise sur cette chambre'
-    );
+    const stay = await prisma.stay.findFirst({
+      where: { id: stayId, status: 'CHECKED_IN', establishment: { organizationId: req.user!.organizationId } },
+    });
+    if (!stay) {
+      return res.status(404).json({
+        message: 'Séjour introuvable ou terminé : la consommation ne peut pas être mise sur cette chambre',
+      });
+    }
   }
 
   const updatedOrder = await payOrder(id, payments, req.user!.id, cashSessionId, stayId);

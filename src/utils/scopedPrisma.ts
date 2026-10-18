@@ -46,8 +46,10 @@ const MODEL_SCOPES: Record<
   ExpenseCategory: { path: 'establishmentId', scope: 'establishment' },
   Expense: { path: 'establishmentId', scope: 'establishment' },
 
-  Customer: { path: 'establishmentId', scope: 'establishment' },
-  CustomerPayment: { path: 'customer.establishmentId', scope: 'establishment' },
+  // Comptes clients communs à tous les établissements d'un même propriétaire
+  // (hôtel + restaurant…) : un seul solde, visible par chaque caisse
+  Customer: { path: 'establishment.organizationId', scope: 'organization' },
+  CustomerPayment: { path: 'customer.establishment.organizationId', scope: 'organization' },
 
   // Hôtel
   Room: { path: 'establishmentId', scope: 'establishment' },

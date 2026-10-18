@@ -482,3 +482,21 @@ export const addStayPayment = async (req: Request, res: Response) => {
   notify(existing.establishmentId);
   res.status(201).json({ stay: withTotals(stay) });
 };
+
+// GET /api/hotel/in-house — clients en séjour dans TOUS les hôtels du
+// propriétaire : le restaurant (même s'il est un autre établissement) peut
+// mettre une consommation sur leur chambre
+export const listInHouseGuests = async (req: Request, res: Response) => {
+  const stays = await prisma.stay.findMany({
+    where: { status: 'CHECKED_IN', establishment: { organizationId: req.user!.organizationId } },
+    orderBy: [{ establishment: { name: 'asc' } }, { room: { number: 'asc' } }],
+    select: {
+      id: true,
+      guestName: true,
+      room: { select: { number: true, building: true } },
+      group: { select: { name: true } },
+      establishment: { select: { id: true, name: true } },
+    },
+  });
+  res.status(200).json({ stays });
+};

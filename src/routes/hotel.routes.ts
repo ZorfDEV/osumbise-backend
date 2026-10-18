@@ -42,6 +42,7 @@ import {
   createStay,
   getStay,
   listRooms,
+  listInHouseGuests,
   listStays,
   listTaxRates,
   updateRoom,
@@ -77,6 +78,8 @@ router.put('/tax-rates', authorize(...MANAGERS), validate(updateTaxRatesSchema),
 
 // --- Séjours ---
 router.get('/stays', authorize(...FRONT_DESK), asyncHandler(listStays));
+// Clients en séjour dans tous les hôtels du propriétaire (« Sur la chambre » au POS)
+router.get('/in-house', authorize(...FRONT_DESK), asyncHandler(listInHouseGuests));
 router.post('/stays', authorize(...FRONT_DESK), validate(createStaySchema), asyncHandler(createStay));
 router.get('/stays/:id', authorize(...FRONT_DESK), asyncHandler(getStay));
 router.patch('/stays/:id', authorize(...FRONT_DESK), validate(updateStaySchema), asyncHandler(updateStay));

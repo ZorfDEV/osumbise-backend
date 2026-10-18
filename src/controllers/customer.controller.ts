@@ -11,7 +11,11 @@ import {
 } from '../validators/customer.validator';
 
 export const listCustomers = async (req: Request, res: Response) => {
-  const customers = await req.db.customer.findMany({ orderBy: { name: 'asc' } });
+  const customers = await req.db.customer.findMany({
+    orderBy: { name: 'asc' },
+    // Établissement où le compte a été créé (comptes partagés entre établissements)
+    include: { establishment: { select: { id: true, name: true } } },
+  });
   res.status(200).json({ customers });
 };
 
@@ -25,7 +29,7 @@ export const getCustomer = async (req: Request, res: Response) => {
     include: {
       orders: {
         where: { status: { in: ['PAYEE', 'FERMEE'] } },
-        include: { payments: { where: { method: 'CREDIT' } } },
+        include: { payments: { where: { method: 'CREDIT' } }, establishment: { select: { name: true } } },
         orderBy: { createdAt: 'desc' },
         take: 30,
       },
