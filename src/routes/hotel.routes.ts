@@ -6,6 +6,9 @@ import { asyncHandler } from '../utils/jwt';
 import {
   addStayPaymentSchema,
   cancelStaySchema,
+  hotelServiceSchema,
+  updateHotelServiceSchema,
+  stayChargeSchema,
   createRoomSchema,
   createStaySchema,
   updateRoomSchema,
@@ -23,6 +26,13 @@ import {
   getStayGroup,
   listStayGroups,
 } from '../controllers/stayGroup.controller';
+import {
+  addStayCharge,
+  createHotelService,
+  deleteStayCharge,
+  listHotelServices,
+  updateHotelService,
+} from '../controllers/hotelService.controller';
 import {
   addStayPayment,
   cancelStay,
@@ -88,5 +98,12 @@ router.get('/groups/:id', authorize(...FRONT_DESK), asyncHandler(getStayGroup));
 router.post('/groups/:id/check-in', authorize(...FRONT_DESK), asyncHandler(checkInStayGroup));
 router.post('/groups/:id/check-out', authorize(...FRONT_DESK), asyncHandler(checkOutStayGroup));
 router.post('/groups/:id/payments', authorize(...FRONT_DESK), validate(groupPaymentSchema), asyncHandler(addStayGroupPayment));
+
+// Prestations de l'hôtel : catalogue (responsables) et ajout à un séjour (réception)
+router.get('/services', authorize(...FRONT_DESK), asyncHandler(listHotelServices));
+router.post('/services', authorize(...MANAGERS), validate(hotelServiceSchema), asyncHandler(createHotelService));
+router.patch('/services/:id', authorize(...MANAGERS), validate(updateHotelServiceSchema), asyncHandler(updateHotelService));
+router.post('/stays/:id/charges', authorize(...FRONT_DESK), validate(stayChargeSchema), asyncHandler(addStayCharge));
+router.delete('/stays/:id/charges/:chargeId', authorize(...FRONT_DESK), asyncHandler(deleteStayCharge));
 
 export default router;

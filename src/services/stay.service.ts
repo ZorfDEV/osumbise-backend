@@ -65,13 +65,14 @@ export const taxFor = async (establishmentId: string, category: Prisma.RoomCreat
 export const stayDetailInclude = {
   // En-tête de la facture : logo, nom et mentions légales
   establishment: { select: { name: true, address: true, logo: true, phone: true, postalBox: true, nif: true, rc: true } },
-  room: { select: { id: true, number: true, building: true, category: true, floor: true } },
+  room: { select: { id: true, number: true, building: true, category: true, floor: true, status: true } },
   group: { select: { id: true, name: true } },
   user: { select: { name: true } },
   payments: {
     orderBy: { createdAt: 'asc' },
     include: { user: { select: { name: true } }, customer: { select: { id: true, name: true } } },
   },
+  charges: { orderBy: { createdAt: 'asc' }, include: { user: { select: { name: true } } } },
   orders: {
     where: { status: { in: ['PAYEE', 'FERMEE'] } },
     orderBy: { createdAt: 'asc' },
@@ -93,6 +94,8 @@ export interface StayTotals {
   lodging: number;
   tax: number;
   charges: number;
+  // Prestations de l'hôtel (pressing, room service…)
+  services: number;
   total: number;
   paid: number;
   balance: number;
@@ -110,9 +113,10 @@ export const computeTotals = (stay: StayWithDetail): StayTotals => {
     (sum, o) => sum + o.payments.filter((p) => p.method === 'ROOM').reduce((s, p) => s + Number(p.amount), 0),
     0
   );
+  const services = stay.charges.reduce((sum, c) => sum + c.quantity * Number(c.unitPrice), 0);
   const paid = stay.payments.reduce((sum, p) => sum + Number(p.amount), 0);
-  const total = lodging + tax + charges;
-  return { nights, lodging, tax, charges, total, paid, balance: Math.round((total - paid) * 100) / 100 };
+  const total = lodging + tax + charges + services;
+  return { nights, lodging, tax, charges, services, total, paid, balance: Math.round((total - paid) * 100) / 100 };
 };
 
 export const withTotals = (stay: StayWithDetail) => ({ ...stay, totals: computeTotals(stay) });

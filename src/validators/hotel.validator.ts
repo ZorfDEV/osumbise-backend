@@ -132,6 +132,34 @@ export const cancelStaySchema = z.object({
   cashSessionId: z.string().uuid().optional(),
 });
 
+// --- Prestations (pressing, room service…) ---------------------------------
+
+export const hotelServiceSchema = z.object({
+  name: z.string().trim().min(2, 'Le nom est requis').max(80),
+  category: z.string().trim().min(2).max(40).default('Pressing'),
+  price: z.number().nonnegative('Le prix ne peut pas être négatif'),
+  isActive: z.boolean().optional(),
+  establishmentId: z.string().uuid().optional(),
+});
+export const updateHotelServiceSchema = hotelServiceSchema.omit({ establishmentId: true }).partial();
+
+// Depuis le catalogue (serviceId), ou saisie libre (label + unitPrice)
+export const stayChargeSchema = z
+  .object({
+    serviceId: z.string().uuid().optional(),
+    label: z.string().trim().min(2).max(80).optional(),
+    category: z.string().trim().max(40).optional(),
+    quantity: z.number().int().min(1).max(500).default(1),
+    unitPrice: z.number().nonnegative().optional(),
+    note: z.string().trim().max(200).optional(),
+  })
+  .refine((c) => !!c.serviceId || (!!c.label && c.unitPrice !== undefined), {
+    message: 'Choisissez une prestation ou saisissez son libellé et son prix',
+  });
+
+export type HotelServiceInput = z.infer<typeof hotelServiceSchema>;
+export type UpdateHotelServiceInput = z.infer<typeof updateHotelServiceSchema>;
+export type StayChargeInput = z.infer<typeof stayChargeSchema>;
 export type CancelStayInput = z.infer<typeof cancelStaySchema>;
 
 export type CreateStayGroupInput = z.infer<typeof createStayGroupSchema>;
