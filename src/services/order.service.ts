@@ -11,10 +11,20 @@ export const recalculateOrderTotals = async (orderId: string) => {
     0
   );
 
-  // Taxe des produits (taux figé sur chaque ligne), ajoutée au prix hors
-  // taxe — arrondie au franc, le FCFA n'ayant pas de centimes
-  const tax = Math.round(
-    items.reduce((sum, item) => sum + item.quantity * Number(item.unitPrice) * (Number(item.taxRate) / 100), 0)
+  // TVA et CSS des produits (taux figés sur chaque ligne), ajoutées au prix
+  // hors taxe. Chaque taxe est calculée par taux sur la base HT des articles
+  // concernés, arrondie au franc (le FCFA n'a pas de centimes) — même calcul
+  // que l'affichage de la facture (frontend : features/pos/taxes.ts)
+  const bases = new Map<string, number>();
+  for (const item of items) {
+    const base = item.quantity * Number(item.unitPrice);
+    for (const [kind, rate] of [['TVA', Number(item.taxRate)], ['CSS', Number(item.cssRate)]] as const) {
+      if (rate) bases.set(`${kind}-${rate}`, (bases.get(`${kind}-${rate}`) ?? 0) + base);
+    }
+  }
+  const tax = [...bases.entries()].reduce(
+    (sum, [key, base]) => sum + Math.round((base * Number(key.split('-')[1])) / 100),
+    0
   );
 
   // Conserve une remise déjà posée sur la commande

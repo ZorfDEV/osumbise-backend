@@ -7,6 +7,8 @@ const productFields = z.object({
   sellingPrice: z.number().nonnegative(),
   cost: z.number().nonnegative().optional().default(0),
   tva: z.number().min(0).max(100).optional().default(0),
+  // Contribution spéciale de solidarité (%), ajoutée comme la TVA
+  css: z.number().min(0).max(100).optional().default(0),
   unit: z.enum(['UNIT', 'G', 'KG', 'ML', 'CL', 'L']).optional().default('UNIT'),
   stockMin: z.number().nonnegative().optional().default(0),
   image: z.string().url().optional(),

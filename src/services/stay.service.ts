@@ -66,6 +66,7 @@ export const stayDetailInclude = {
   // En-tête de la facture : logo, nom et mentions légales
   establishment: { select: { name: true, address: true, logo: true, phone: true, postalBox: true, nif: true, rc: true } },
   room: { select: { id: true, number: true, building: true, category: true, floor: true } },
+  group: { select: { id: true, name: true } },
   user: { select: { name: true } },
   payments: {
     orderBy: { createdAt: 'asc' },

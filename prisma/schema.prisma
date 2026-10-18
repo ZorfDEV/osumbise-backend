@@ -120,6 +120,7 @@ model Establishment {
   rooms          Room[]
   roomCategoryTaxes RoomCategoryTax[]
   stays          Stay[]
+  stayGroups     StayGroup[]
   createdAt      DateTime          @default(now()) @map("created_at")
   updatedAt      DateTime          @updatedAt @map("updated_at")
 
@@ -162,6 +163,7 @@ model User {
   cashSessionsClosed CashSession[]   @relation("ClosedBy")
   auditLogs          AuditLog[]
   stays              Stay[]
+  stayGroups         StayGroup[]
   stayPayments       StayPayment[]
   orderVoids         OrderVoid[]
   createdAt          DateTime        @default(now()) @map("created_at")
@@ -222,8 +224,10 @@ model Product {
   sku             String?
   sellingPrice    Decimal       @map("selling_price") @db.Decimal(12, 2)
   cost            Decimal       @default(0) @db.Decimal(12, 2)
-  // Taxe optionnelle en % (ex. 18), ajoutée au prix de vente hors taxe à la vente
+  // Taxes optionnelles en %, ajoutées au prix de vente hors taxe à la vente :
+  // TVA (ex. 18) et CSS — contribution spéciale de solidarité (ex. 1)
   tva             Decimal       @default(0) @db.Decimal(5, 2)
+  css             Decimal       @default(0) @db.Decimal(5, 2)
   unit            Unit          @default(UNIT)
   stockCurrent    Decimal       @default(0) @map("stock_current") @db.Decimal(10, 3)
   stockMin        Decimal       @default(0) @map("stock_min") @db.Decimal(10, 3)
@@ -372,7 +376,8 @@ model OrderItem {
   quantity  Int
   unitPrice Decimal @map("unit_price") @db.Decimal(12, 2) // prix figé au moment de la vente
   // Taxe du produit (%) figée au moment de l'ajout, ajoutée au prix hors taxe
-  taxRate   Decimal @default(0) @map("tax_rate") @db.Decimal(5, 2)
+  taxRate   Decimal @default(0) @map("tax_rate") @db.Decimal(5, 2) // TVA
+  cssRate   Decimal @default(0) @map("css_rate") @db.Decimal(5, 2) // CSS
   note      String?
 
   @@map("order_items")
@@ -602,6 +607,8 @@ model Customer {
   payments        CustomerPayment[]
   // Séjours (ou parts de séjour) mis sur le compte — méthode CREDIT
   stayPayments    StayPayment[]
+  // Réservations de groupe au nom de ce client (entreprise)
+  stayGroups      StayGroup[]
   createdAt       DateTime          @default(now()) @map("created_at")
   updatedAt       DateTime          @updatedAt @map("updated_at")
 
@@ -748,6 +755,9 @@ model Stay {
   payments        StayPayment[]
   // Consommations du bar/restaurant mises sur la chambre
   orders          Order[]
+  // Réservation de groupe (entreprise) : une facture unique pour toutes ses chambres
+  groupId         String?       @map("group_id")
+  group           StayGroup?    @relation(fields: [groupId], references: [id])
   createdAt       DateTime      @default(now()) @map("created_at")
   updatedAt       DateTime      @updatedAt @map("updated_at")
 
@@ -758,6 +768,29 @@ model Stay {
 
 // Versement sur un séjour : acompte à la réservation ou à l'arrivée, solde au
 // départ — autant que nécessaire. Jamais ROOM (c'est l'inverse d'un paiement).
+// Réservation de groupe : plusieurs chambres au nom d'une entreprise ou d'un
+// groupe, mêmes dates par défaut, facturées ensemble. Chaque chambre reste un
+// séjour (arrivée, départ, consommations) ; les versements du groupe sont
+// répartis sur ses séjours.
+model StayGroup {
+  id              String        @id @default(uuid())
+  establishmentId String        @map("establishment_id")
+  establishment   Establishment @relation(fields: [establishmentId], references: [id])
+  name            String
+  // Entreprise payeuse (compte client), facultative
+  customerId      String?       @map("customer_id")
+  customer        Customer?     @relation(fields: [customerId], references: [id])
+  contactPhone    String?       @map("contact_phone")
+  notes           String?
+  userId          String        @map("user_id")
+  user            User          @relation(fields: [userId], references: [id])
+  stays           Stay[]
+  createdAt       DateTime      @default(now()) @map("created_at")
+  updatedAt       DateTime      @updatedAt @map("updated_at")
+
+  @@map("stay_groups")
+}
+
 model StayPayment {
   id        String        @id @default(uuid())
   stayId    String        @map("stay_id")

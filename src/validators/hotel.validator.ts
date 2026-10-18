@@ -90,6 +90,41 @@ export const addStayPaymentSchema = z
     path: ['customerId'],
   });
 
+// --- Réservations de groupe ------------------------------------------------
+
+export const createStayGroupSchema = z
+  .object({
+    name: z.string().trim().min(2, 'Le nom du groupe est requis').max(120),
+    customerId: z.string().uuid().optional(),
+    contactPhone: z.string().trim().max(30).optional(),
+    checkInDate: day,
+    checkOutDate: day,
+    notes: z.string().max(1000).optional(),
+    checkInNow: z.boolean().optional(),
+    establishmentId: z.string().uuid().optional(),
+    rooms: z
+      .array(
+        z.object({
+          roomId: z.string().uuid(),
+          // Occupant ; à défaut, le nom du groupe
+          guestName: z.string().trim().max(120).optional(),
+          adults: z.number().int().min(1).max(20).default(1),
+          children: z.number().int().min(0).max(20).default(0),
+          nightlyRate: z.number().nonnegative().optional(),
+        })
+      )
+      .min(1, 'Choisissez au moins une chambre')
+      .max(200),
+  })
+  .refine(datesInOrder, datesMessage)
+  .refine((g) => new Set(g.rooms.map((r) => r.roomId)).size === g.rooms.length, {
+    message: 'Une même chambre est choisie deux fois',
+    path: ['rooms'],
+  });
+
+export const groupPaymentSchema = addStayPaymentSchema;
+
+export type CreateStayGroupInput = z.infer<typeof createStayGroupSchema>;
 export type CreateRoomInput = z.infer<typeof createRoomSchema>;
 export type UpdateRoomInput = z.infer<typeof updateRoomSchema>;
 export type UpdateTaxRatesInput = z.infer<typeof updateTaxRatesSchema>;

@@ -11,7 +11,17 @@ import {
   updateRoomStatusSchema,
   updateStaySchema,
   updateTaxRatesSchema,
+  createStayGroupSchema,
+  groupPaymentSchema,
 } from '../validators/hotel.validator';
+import {
+  addStayGroupPayment,
+  checkInStayGroup,
+  checkOutStayGroup,
+  createStayGroup,
+  getStayGroup,
+  listStayGroups,
+} from '../controllers/stayGroup.controller';
 import {
   addStayPayment,
   cancelStay,
@@ -68,5 +78,14 @@ router.post(
   validate(addStayPaymentSchema),
   asyncHandler(addStayPayment)
 );
+
+
+// Réservations de groupe (entreprise) : facture unique
+router.get('/groups', authorize(...FRONT_DESK), asyncHandler(listStayGroups));
+router.post('/groups', authorize(...FRONT_DESK), validate(createStayGroupSchema), asyncHandler(createStayGroup));
+router.get('/groups/:id', authorize(...FRONT_DESK), asyncHandler(getStayGroup));
+router.post('/groups/:id/check-in', authorize(...FRONT_DESK), asyncHandler(checkInStayGroup));
+router.post('/groups/:id/check-out', authorize(...FRONT_DESK), asyncHandler(checkOutStayGroup));
+router.post('/groups/:id/payments', authorize(...FRONT_DESK), validate(groupPaymentSchema), asyncHandler(addStayGroupPayment));
 
 export default router;

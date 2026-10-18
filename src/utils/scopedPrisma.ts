@@ -53,6 +53,7 @@ const MODEL_SCOPES: Record<
   Room: { path: 'establishmentId', scope: 'establishment' },
   RoomCategoryTax: { path: 'establishmentId', scope: 'establishment' },
   Stay: { path: 'establishmentId', scope: 'establishment' },
+  StayGroup: { path: 'establishmentId', scope: 'establishment' },
   StayPayment: { path: 'stay.establishmentId', scope: 'establishment' },
 };
 

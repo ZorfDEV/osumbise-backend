@@ -155,6 +155,7 @@ export const addOrderItem = async (req: Request, res: Response) => {
       // figé au moment de l'ajout, remise en cours (tag) déjà appliquée si active
       unitPrice: getEffectivePrice(product),
       taxRate: product.tva,
+      cssRate: product.css,
       note,
     },
   });

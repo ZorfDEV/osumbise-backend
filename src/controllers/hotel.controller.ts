@@ -46,7 +46,7 @@ export const listRooms = async (req: Request, res: Response) => {
         where: { status: { in: ['RESERVED', 'CHECKED_IN'] }, checkOutDate: { gte: today() } },
         orderBy: { checkInDate: 'asc' },
         take: 3,
-        select: { id: true, guestName: true, status: true, checkInDate: true, checkOutDate: true },
+        select: { id: true, guestName: true, status: true, checkInDate: true, checkOutDate: true, group: { select: { id: true, name: true } } },
       },
     },
   });
@@ -166,7 +166,11 @@ export const listStays = async (req: Request, res: Response) => {
   const stays = await req.db.stay.findMany({
     where,
     orderBy: { checkInDate: 'asc' },
-    include: { room: { select: { id: true, number: true, building: true, category: true } }, payments: { select: { amount: true } } },
+    include: {
+      room: { select: { id: true, number: true, building: true, category: true } },
+      payments: { select: { amount: true } },
+      group: { select: { id: true, name: true } },
+    },
     take: 500,
   });
   res.status(200).json({ stays });
