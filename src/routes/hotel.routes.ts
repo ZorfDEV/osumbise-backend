@@ -5,6 +5,7 @@ import { validate } from '../middlewares/validate.middleware';
 import { asyncHandler } from '../utils/jwt';
 import {
   addStayPaymentSchema,
+  cancelStaySchema,
   createRoomSchema,
   createStaySchema,
   updateRoomSchema,
@@ -71,7 +72,7 @@ router.get('/stays/:id', authorize(...FRONT_DESK), asyncHandler(getStay));
 router.patch('/stays/:id', authorize(...FRONT_DESK), validate(updateStaySchema), asyncHandler(updateStay));
 router.post('/stays/:id/check-in', authorize(...FRONT_DESK), asyncHandler(checkIn));
 router.post('/stays/:id/check-out', authorize(...FRONT_DESK), asyncHandler(checkOut));
-router.post('/stays/:id/cancel', authorize(...FRONT_DESK), asyncHandler(cancelStay));
+router.post('/stays/:id/cancel', authorize(...FRONT_DESK), validate(cancelStaySchema), asyncHandler(cancelStay));
 router.post(
   '/stays/:id/payments',
   authorize(...FRONT_DESK),

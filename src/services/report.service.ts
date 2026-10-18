@@ -14,7 +14,89 @@ interface ReportData {
   paymentBreakdown: Record<string, number>;
   topProducts: { productId: string; name: string; quantity: number }[];
   topCategories: { categoryId: string; name: string; profit: number }[];
+  // Hôtel (null si l'établissement n'a aucune chambre)
+  hotel: HotelReport | null;
 }
+
+interface HotelReport {
+  // Facturé : séjours terminés (départ dans la période) + avances conservées
+  // sur les réservations annulées dans la période
+  checkedOutStays: number;
+  nights: number;
+  lodging: number;
+  stayTax: number;
+  cancellationFees: number;
+  billed: number;
+  // Encaissé dans la période (avances et soldes), net des remboursements
+  received: Record<string, number>;
+  receivedTotal: number;
+  refunds: number;
+  // Avances détenues aujourd'hui sur des réservations pas encore arrivées
+  advancesHeld: number;
+}
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+const getHotelReport = async (req: Request, start: Date, end: Date): Promise<HotelReport | null> => {
+  const roomCount = await req.db.room.count();
+  if (roomCount === 0) return null;
+
+  const checkedOut = await req.db.stay.findMany({
+    where: { status: 'CHECKED_OUT', checkedOutAt: { gte: start, lt: end } },
+    select: { checkInDate: true, checkOutDate: true, nightlyRate: true, taxPerNight: true },
+  });
+  let nights = 0;
+  let lodging = 0;
+  let stayTax = 0;
+  for (const s of checkedOut) {
+    const n = Math.max(1, Math.round((s.checkOutDate.getTime() - s.checkInDate.getTime()) / DAY_MS));
+    nights += n;
+    lodging += n * Number(s.nightlyRate);
+    stayTax += n * Number(s.taxPerNight);
+  }
+
+  // Avances conservées : solde net encaissé des réservations annulées
+  const cancelled = await req.db.stay.findMany({
+    where: { status: 'CANCELLED', updatedAt: { gte: start, lt: end } },
+    select: { payments: { select: { amount: true } } },
+  });
+  const cancellationFees = cancelled.reduce(
+    (sum, s) => sum + Math.max(0, s.payments.reduce((t, p) => t + Number(p.amount), 0)),
+    0
+  );
+
+  const payments = await req.db.stayPayment.findMany({
+    where: { createdAt: { gte: start, lt: end } },
+    select: { method: true, amount: true },
+  });
+  const received = new Map<string, number>();
+  let refunds = 0;
+  for (const p of payments) {
+    const amount = Number(p.amount);
+    if (amount < 0) refunds += -amount;
+    received.set(p.method, (received.get(p.method) ?? 0) + amount);
+  }
+  const receivedTotal = [...received.values()].reduce((a, b) => a + b, 0);
+
+  const reserved = await req.db.stay.findMany({
+    where: { status: 'RESERVED' },
+    select: { payments: { select: { amount: true } } },
+  });
+  const advancesHeld = reserved.reduce((sum, s) => sum + s.payments.reduce((t, p) => t + Number(p.amount), 0), 0);
+
+  return {
+    checkedOutStays: checkedOut.length,
+    nights,
+    lodging,
+    stayTax,
+    cancellationFees,
+    billed: lodging + stayTax + cancellationFees,
+    received: Object.fromEntries(received),
+    receivedTotal,
+    refunds,
+    advancesHeld,
+  };
+};
 
 export const getReportData = async (
   req: Request,
@@ -97,6 +179,7 @@ export const getReportData = async (
   const expenses = expenseRecords.reduce((sum, e) => sum + Number(e.amount), 0);
 
   const margin = revenue > 0 ? (profit / revenue) * 100 : 0;
+  const hotel = await getHotelReport(req, start, end);
 
   return {
     period: { start, end },
@@ -117,6 +200,7 @@ export const getReportData = async (
     topCategories: Array.from(categoryProfit.entries())
       .map(([categoryId, data]) => ({ categoryId, ...data }))
       .sort((a, b) => b.profit - a.profit),
+    hotel,
   };
 };
 
@@ -149,6 +233,22 @@ export const buildReportCsv = (data: ReportData): string => {
   csv += toCsvRow(['Produit', 'Quantité vendue']);
   for (const p of data.topProducts) {
     csv += toCsvRow([p.name, p.quantity]);
+  }
+
+  if (data.hotel) {
+    const h = data.hotel;
+    csv += '\n';
+    csv += toCsvRow(['Hébergement', 'Valeur']);
+    csv += toCsvRow(['Séjours terminés', h.checkedOutStays]);
+    csv += toCsvRow(['Nuitées', h.nights]);
+    csv += toCsvRow(['Hébergement facturé', h.lodging]);
+    csv += toCsvRow(['Taxe de séjour', h.stayTax]);
+    csv += toCsvRow(['Avances conservées (annulations)', h.cancellationFees]);
+    csv += toCsvRow(['Total hébergement facturé', h.billed]);
+    csv += toCsvRow(['Encaissé (avances et soldes, net)', h.receivedTotal]);
+    for (const [method, amount] of Object.entries(h.received)) csv += toCsvRow([`  dont ${method}`, amount]);
+    csv += toCsvRow(['Remboursements', h.refunds]);
+    csv += toCsvRow(['Avances détenues (réservations à venir)', h.advancesHeld]);
   }
 
   return csv;
@@ -191,6 +291,21 @@ export const buildReportPdf = (data: ReportData, title: string): PDFKit.PDFDocum
   doc.fontSize(11);
   for (const p of data.topProducts.slice(0, 15)) {
     doc.text(`${p.name} — ${p.quantity}`);
+  }
+
+  if (data.hotel) {
+    const h = data.hotel;
+    doc.moveDown();
+    doc.fontSize(13).text('Hébergement');
+    doc.fontSize(11);
+    line('Séjours terminés', `${h.checkedOutStays} (${h.nights} nuitées)`);
+    line('Hébergement facturé', formatFcfa(h.lodging));
+    line('Taxe de séjour', formatFcfa(h.stayTax));
+    line('Avances conservées (annulations)', formatFcfa(h.cancellationFees));
+    line('Total hébergement facturé', formatFcfa(h.billed));
+    line('Encaissé (avances et soldes, net)', formatFcfa(h.receivedTotal));
+    line('Remboursements', formatFcfa(h.refunds));
+    line('Avances détenues (réservations à venir)', formatFcfa(h.advancesHeld));
   }
 
   return doc;

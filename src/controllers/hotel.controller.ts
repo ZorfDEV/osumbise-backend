@@ -8,6 +8,7 @@ import { emitToEstablishment } from '../realtime/socket';
 import { assertCreditAllowed } from '../services/customerCredit.service';
 import {
   AddStayPaymentInput,
+  CancelStayInput,
   CreateRoomInput,
   CreateStayInput,
   UpdateRoomInput,
@@ -350,11 +351,78 @@ export const checkOut = async (req: Request, res: Response) => {
   res.status(200).json({ stay: withTotals(stay) });
 };
 
-// POST /api/hotel/stays/:id/cancel — réservation non honorée ou annulée
+// POST /api/hotel/stays/:id/cancel { advance?, cashSessionId? } — réservation
+// non honorée ou annulée. Si une avance a été versée, il faut dire ce qu'elle
+// devient : remboursée (REFUND) ou conservée comme frais d'annulation (RETAIN).
 export const cancelStay = async (req: Request, res: Response) => {
   const existing = await loadStay(req, req.params.id);
   if (existing.status !== 'RESERVED') throw httpError('Seule une réservation (avant l’arrivée) peut être annulée', 409);
-  await prisma.stay.update({ where: { id: existing.id }, data: { status: 'CANCELLED' } });
+  const { advance, cashSessionId } = (req.body ?? {}) as CancelStayInput;
+
+  const paid = existing.payments.reduce((sum, p) => sum + Number(p.amount), 0);
+  if (paid > 0 && !advance) {
+    return res.status(409).json({
+      message: `Une avance de ${paid.toLocaleString('fr-FR')} FCFA a été versée : remboursez-la ou conservez-la`,
+      code: 'ADVANCE_PAID',
+      paid,
+    });
+  }
+  if (advance === 'REFUND' && cashSessionId) await assertUsableCashSession(req, cashSessionId);
+
+  // Montant net encaissé par mode (et par compte client pour « Compte client »)
+  const net = new Map<string, { method: AddStayPaymentInput['method']; customerId: string | null; amount: number }>();
+  for (const p of existing.payments) {
+    const key = `${p.method}:${p.customerId ?? ''}`;
+    const entry = net.get(key) ?? { method: p.method as AddStayPaymentInput['method'], customerId: p.customerId, amount: 0 };
+    entry.amount += Number(p.amount);
+    net.set(key, entry);
+  }
+
+  await prisma.$transaction(async (tx) => {
+    const mention =
+      paid > 0
+        ? advance === 'REFUND'
+          ? `Annulée : avance de ${paid.toLocaleString('fr-FR')} FCFA remboursée`
+          : `Annulée : avance de ${paid.toLocaleString('fr-FR')} FCFA conservée (frais d’annulation)`
+        : null;
+    await tx.stay.update({
+      where: { id: existing.id },
+      data: {
+        status: 'CANCELLED',
+        ...(mention ? { notes: existing.notes ? `${existing.notes}\n${mention}` : mention } : {}),
+      },
+    });
+
+    if (advance !== 'REFUND') return;
+    // Remboursement : une ligne négative par mode, le solde du séjour revient à 0
+    for (const entry of net.values()) {
+      if (entry.amount <= 0) continue;
+      await tx.stayPayment.create({
+        data: {
+          stayId: existing.id,
+          method: entry.method,
+          amount: -entry.amount,
+          note: 'Remboursement de l’avance (annulation)',
+          customerId: entry.customerId,
+          userId: req.user!.id,
+        },
+      });
+      if (entry.method === 'CREDIT' && entry.customerId) {
+        await tx.customer.update({ where: { id: entry.customerId }, data: { balance: { decrement: entry.amount } } });
+      }
+      // Les espèces rendues sortent du tiroir de la personne qui rembourse
+      if (entry.method === 'CASH' && cashSessionId) {
+        await tx.cashMovement.create({
+          data: {
+            cashSessionId,
+            type: 'REFUND',
+            amount: -entry.amount,
+            note: `Remboursement avance — chambre ${existing.room.number}, ${existing.guestName}`,
+          },
+        });
+      }
+    }
+  });
   const stay = await loadStay(req, existing.id);
   notify(existing.establishmentId);
   res.status(200).json({ stay: withTotals(stay) });

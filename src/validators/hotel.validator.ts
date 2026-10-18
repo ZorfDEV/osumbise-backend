@@ -124,6 +124,16 @@ export const createStayGroupSchema = z
 
 export const groupPaymentSchema = addStayPaymentSchema;
 
+// Annulation d'une réservation : que faire de l'avance déjà versée ?
+// REFUND = rendue au client (sortie de caisse), RETAIN = conservée (frais
+// d'annulation, comptée dans les rapports)
+export const cancelStaySchema = z.object({
+  advance: z.enum(['REFUND', 'RETAIN']).optional(),
+  cashSessionId: z.string().uuid().optional(),
+});
+
+export type CancelStayInput = z.infer<typeof cancelStaySchema>;
+
 export type CreateStayGroupInput = z.infer<typeof createStayGroupSchema>;
 export type CreateRoomInput = z.infer<typeof createRoomSchema>;
 export type UpdateRoomInput = z.infer<typeof updateRoomSchema>;
