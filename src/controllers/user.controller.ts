@@ -91,6 +91,11 @@ export const updateUser = async (req: Request, res: Response) => {
     );
   }
 
+  if (data.email && data.email !== existing.email) {
+    const taken = await prisma.user.findUnique({ where: { email: data.email } });
+    if (taken) return res.status(409).json({ message: 'Cet email est déjà utilisé' });
+  }
+
   const user = await prisma.user.update({
     where: { id },
     data,

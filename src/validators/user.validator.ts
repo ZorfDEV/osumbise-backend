@@ -16,6 +16,8 @@ export const createUserSchema = z.object({
 
 export const updateUserSchema = z.object({
   name: z.string().min(2).optional(),
+  // E-mail de connexion (unique sur toute la plateforme)
+  email: z.string().trim().toLowerCase().email('Email invalide').optional(),
   role: z.enum(ASSIGNABLE_ROLES).optional(),
   establishmentId: z.string().uuid().optional(),
   isActive: z.boolean().optional(),
