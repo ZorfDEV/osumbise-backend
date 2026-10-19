@@ -9,6 +9,7 @@ import {
 import {
   getCashSession,
   getMyCashSession,
+  listDailySessions,
   closeCashSession,
   createCashMovement,
 } from '../controllers/cashSession.controller';
@@ -19,6 +20,7 @@ const router = Router();
 router.use(protect, scopeTenant);
 
 router.get('/mine', asyncHandler(getMyCashSession));
+router.get('/daily', authorize('OWNER', 'ADMIN'), asyncHandler(listDailySessions));
 router.get('/:id', asyncHandler(getCashSession));
 router.post(
   '/:id/close',

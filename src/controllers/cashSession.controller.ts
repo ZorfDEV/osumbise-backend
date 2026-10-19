@@ -200,3 +200,45 @@ export const getMyCashSession = async (req: Request, res: Response) => {
   }
   res.status(200).json({ session });
 };
+
+// GET /api/cash-sessions/daily?date=YYYY-MM-DD — récapitulatif par caissière :
+// sessions ouvertes ce jour-là, ventes par mode, total et écart (responsables)
+export const listDailySessions = async (req: Request, res: Response) => {
+  const day = typeof req.query.date === 'string' ? req.query.date : new Date().toISOString().slice(0, 10);
+  const start = new Date(`${day}T00:00:00`);
+  const end = new Date(start);
+  end.setDate(end.getDate() + 1);
+
+  const sessions = await req.db.cashSession.findMany({
+    where: { openedAt: { gte: start, lt: end } },
+    orderBy: { openedAt: 'asc' },
+    include: {
+      openedBy: { select: { id: true, name: true } },
+      cashRegister: { select: { name: true } },
+      movements: { select: { type: true, amount: true, orderId: true } },
+    },
+  });
+
+  const rows = sessions.map((s) => {
+    const sum = (type: string) =>
+      s.movements.filter((m) => m.type === type).reduce((total, m) => total + Number(m.amount), 0);
+    const cash = sum('SALE_CASH');
+    const mobile = sum('SALE_MOBILE_MONEY');
+    const card = sum('SALE_CARD');
+    const sales = new Set(s.movements.filter((m) => m.type.startsWith('SALE_')).map((m) => m.orderId)).size;
+    return {
+      id: s.id,
+      cashier: s.openedBy,
+      register: s.cashRegister.name,
+      openedAt: s.openedAt,
+      closedAt: s.closedAt,
+      sales,
+      cash,
+      mobile,
+      card,
+      total: cash + mobile + card,
+      discrepancy: s.discrepancy === null ? null : Number(s.discrepancy),
+    };
+  });
+  res.status(200).json({ sessions: rows });
+};
