@@ -61,7 +61,14 @@ export const getCustomer = async (req: Request, res: Response) => {
     return res.status(404).json({ message: 'Client introuvable' });
   }
 
-  res.status(200).json({ customer });
+  // En-tête du relevé imprimé : l'établissement de la personne connectée
+  // (à défaut, celui où le compte a été créé)
+  const issuer = await prisma.establishment.findUnique({
+    where: { id: req.user!.establishmentId ?? customer.establishmentId },
+    select: { name: true, address: true, logo: true, phone: true, email: true, postalBox: true, nif: true, rc: true },
+  });
+
+  res.status(200).json({ customer: { ...customer, issuer } });
 };
 
 export const createCustomer = async (req: Request, res: Response) => {

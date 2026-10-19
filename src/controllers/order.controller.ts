@@ -42,12 +42,19 @@ const EDITABLE_STATUSES: OrderStatus[] = ['BROUILLON', 'EN_ATTENTE'];
 export const listOrders = async (req: Request, res: Response) => {
   const { status, tableId } = req.query;
 
+  // status : un statut ou une liste séparée par des virgules (page « À encaisser »)
+  const statuses = status ? (String(status).split(',') as OrderStatus[]) : [];
   const orders = await req.db.order.findMany({
     where: {
-      ...(status ? { status: status as OrderStatus } : {}),
+      ...(statuses.length ? { status: { in: statuses } } : {}),
       ...(tableId ? { tableId: tableId as string } : {}),
     },
-    include: { table: true, items: { include: { product: true } } },
+    include: {
+      table: true,
+      items: { include: { product: true } },
+      user: { select: { name: true } },
+      customer: { select: { id: true, name: true, balance: true } },
+    },
     orderBy: { createdAt: 'desc' },
   });
 
