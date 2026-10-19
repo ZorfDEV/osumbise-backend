@@ -101,6 +101,8 @@ model Establishment {
   type           EstablishmentType
   address        String?
   logo           String?
+  // Prochain numéro de facture (0001, 0002…) des commandes de cet établissement
+  nextInvoiceNumber Int            @default(1) @map("next_invoice_number")
   // Mentions légales, toutes facultatives, imprimées en tête des factures
   phone          String?
   email          String?
@@ -323,6 +325,8 @@ model Order {
   // facture de ce séjour
   stayId          String?       @map("stay_id")
   stay            Stay?         @relation(fields: [stayId], references: [id])
+  // Numéro de facture séquentiel, propre à l'établissement (affiché 0001)
+  number          Int?
   status          OrderStatus   @default(BROUILLON)
   subtotal        Decimal       @default(0) @db.Decimal(12, 2)
   discount        Decimal       @default(0) @db.Decimal(12, 2)
@@ -339,6 +343,7 @@ model Order {
   createdAt      DateTime             @default(now()) @map("created_at")
   updatedAt      DateTime             @updatedAt @map("updated_at")
 
+  @@unique([establishmentId, number])
   @@map("orders")
 }
 

@@ -106,9 +106,16 @@ export const createOrder = async (req: Request, res: Response) => {
   }
 
   const order = await prisma.$transaction(async (tx) => {
+    // Numéro de facture : compteur de l'établissement, incrémenté atomiquement
+    const counter = await tx.establishment.update({
+      where: { id: establishmentId },
+      data: { nextInvoiceNumber: { increment: 1 } },
+      select: { nextInvoiceNumber: true },
+    });
     const created = await tx.order.create({
       data: {
         establishmentId,
+        number: counter.nextInvoiceNumber - 1,
         tableId,
         customerName,
         customerId,
@@ -317,10 +324,42 @@ export const listOrderVoids = async (req: Request, res: Response) => {
     take: 200,
     include: {
       user: { select: { name: true } },
-      order: { select: { id: true, table: { select: { label: true } }, _count: { select: { payments: true } } } },
+      order: { select: { id: true, number: true, table: { select: { label: true } }, _count: { select: { payments: true } } } },
     },
   });
   res.status(200).json({ voids });
+};
+
+// GET /api/orders/search?q= — retrouver une facture : numéro (12 ou 0012),
+// nom du client, table. Toutes les factures, payées ou non (les 30 plus récentes).
+export const searchOrders = async (req: Request, res: Response) => {
+  const q = String(req.query.q ?? '').trim();
+  if (!q) return res.status(200).json({ orders: [] });
+  const asNumber = /^#?\d+$/.test(q) ? Number(q.replace('#', '')) : null;
+  const orders = await req.db.order.findMany({
+    where: {
+      items: { some: {} },
+      OR: [
+        ...(asNumber !== null ? [{ number: asNumber }] : []),
+        { customer: { name: { contains: q, mode: 'insensitive' as const } } },
+        { customerName: { contains: q, mode: 'insensitive' as const } },
+        { table: { label: { equals: q, mode: 'insensitive' as const } } },
+      ],
+    },
+    orderBy: { createdAt: 'desc' },
+    take: 30,
+    select: {
+      id: true,
+      number: true,
+      status: true,
+      total: true,
+      createdAt: true,
+      table: { select: { label: true } },
+      customer: { select: { name: true } },
+      payments: { select: { method: true } },
+    },
+  });
+  res.status(200).json({ orders });
 };
 
 // GET /api/orders/sales?from=YYYY-MM-DD&to=YYYY-MM-DD — ventes encaissées
@@ -343,6 +382,7 @@ export const listSales = async (req: Request, res: Response) => {
     take: 300,
     select: {
       id: true,
+      number: true,
       status: true,
       total: true,
       updatedAt: true,
