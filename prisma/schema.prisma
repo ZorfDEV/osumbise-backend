@@ -337,6 +337,10 @@ model Order {
   discount        Decimal       @default(0) @db.Decimal(12, 2)
   tax             Decimal       @default(0) @db.Decimal(12, 2)
   total           Decimal       @default(0) @db.Decimal(12, 2)
+  // Paiement en espèces supérieur au total : montant remis par le client et
+  // monnaie rendue (imprimés sur le ticket ; seul le dû entre en caisse)
+  cashReceived    Decimal?      @map("cash_received") @db.Decimal(12, 2)
+  changeGiven     Decimal       @default(0) @map("change_given") @db.Decimal(12, 2)
 
   items          OrderItem[]
   payments       Payment[]

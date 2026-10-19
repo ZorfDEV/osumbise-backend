@@ -60,6 +60,33 @@ export const payOrder = async (
     );
   }
 
+  // Monnaie à rendre : seules les espèces peuvent dépasser le total. Le
+  // paiement enregistré (et le mouvement de caisse) est ramené au montant dû ;
+  // le montant remis et la monnaie rendue sont conservés pour le ticket.
+  const change = Math.round((totalPaid - Number(order.total)) * 100) / 100;
+  const cashGiven = payments.filter((p) => p.method === 'CASH').reduce((sum, p) => sum + p.amount, 0);
+  if (change > 0 && cashGiven < change) {
+    throw Object.assign(
+      new Error(
+        `Le montant dépasse le total de ${change.toLocaleString('fr-FR')} FCFA : seul un paiement en espèces permet de rendre la monnaie`
+      ),
+      { status: 400 }
+    );
+  }
+  if (change > 0) {
+    let rest = change;
+    payments = [...payments]
+      .reverse()
+      .map((p) => {
+        if (p.method !== 'CASH' || rest <= 0) return p;
+        const take = Math.min(rest, p.amount);
+        rest -= take;
+        return { ...p, amount: Math.round((p.amount - take) * 100) / 100 };
+      })
+      .reverse()
+      .filter((p) => p.amount > 0);
+  }
+
   // Agrège la consommation de stock par ingrédient, tous articles de la
   // commande confondus (ex. deux cocktails différents qui utilisent tous les
   // deux du rhum ne génèrent qu'un seul mouvement de stock pour le rhum).
@@ -129,7 +156,9 @@ export const payOrder = async (
 
     await tx.order.update({
       where: { id: orderId },
-      data: { status: 'PAYEE', ...(stayId && payments.some((p) => p.method === 'ROOM') ? { stayId } : {}) },
+      data: {
+        status: 'PAYEE',
+        ...(change > 0 ? { cashReceived: cashGiven, changeGiven: change } : {}), ...(stayId && payments.some((p) => p.method === 'ROOM') ? { stayId } : {}) },
     });
     await tx.orderStatusHistory.create({ data: { orderId, status: 'PAYEE' } });
 
