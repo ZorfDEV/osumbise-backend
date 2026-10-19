@@ -94,7 +94,7 @@ export const payOrder = async (
     await applyStockExits(tx, orderId, exits, userId);
 
     await tx.payment.createMany({
-      data: payments.map((p) => ({ orderId, method: p.method, amount: p.amount })),
+      data: payments.map((p) => ({ orderId, method: p.method, amount: p.amount, cashSessionId: cashSessionId ?? null })),
     });
 
     // Vente à crédit : le montant s'ajoute au solde dû du client plutôt que

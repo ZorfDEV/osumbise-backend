@@ -103,7 +103,26 @@ export const getCashSession = async (req: Request, res: Response) => {
   }
   if (!canManageSession(req, session)) throw forbiddenSession();
 
-  res.status(200).json({ session });
+  // Factures encaissées dans la session : tous modes de paiement (rattachées
+  // au paiement), plus les anciennes ventes connues par leurs mouvements
+  const orders = await prisma.order.findMany({
+    where: {
+      OR: [{ payments: { some: { cashSessionId: id } } }, { cashMovements: { some: { cashSessionId: id } } }],
+    },
+    orderBy: { number: 'asc' },
+    select: {
+      id: true,
+      number: true,
+      status: true,
+      total: true,
+      table: { select: { label: true } },
+      customer: { select: { name: true } },
+      items: { select: { quantity: true, product: { select: { id: true, name: true } } } },
+      payments: { select: { method: true, amount: true } },
+    },
+  });
+
+  res.status(200).json({ session: { ...session, orders } });
 };
 
 export const closeCashSession = async (req: Request, res: Response) => {
