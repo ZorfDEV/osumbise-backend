@@ -77,6 +77,7 @@ export const getOrder = async (req: Request, res: Response) => {
       // Hôtel : consommation mise sur une chambre (affichée sur le ticket)
       stay: { select: { id: true, guestName: true, room: { select: { number: true, building: true } } } },
       voids: { orderBy: { createdAt: 'asc' }, include: { user: { select: { name: true } } } },
+      followsOrder: { select: { id: true, number: true } },
     },
   });
 
@@ -88,8 +89,22 @@ export const getOrder = async (req: Request, res: Response) => {
 };
 
 export const createOrder = async (req: Request, res: Response) => {
-  const { tableId, customerName, customerId } = req.body as CreateOrderInput;
+  const body = req.body as CreateOrderInput;
   const establishmentId = await resolveEstablishmentId(req);
+
+  // Suite d'une facture payée : on reprend sa table et son client
+  const previous = body.followsOrderId
+    ? await assertInScope(
+        () => req.db.order.findFirst({ where: { id: body.followsOrderId } }),
+        'Facture précédente introuvable'
+      )
+    : null;
+  if (previous && previous.status !== 'PAYEE' && previous.status !== 'FERMEE') {
+    return res.status(409).json({ message: 'La facture précédente n’est pas encore payée : ajoutez les articles à cette commande' });
+  }
+  const tableId = body.tableId ?? previous?.tableId ?? undefined;
+  const customerId = body.customerId ?? previous?.customerId ?? undefined;
+  const customerName = body.customerName ?? previous?.customerName ?? undefined;
 
   if (tableId) {
     await assertInScope(
@@ -116,6 +131,7 @@ export const createOrder = async (req: Request, res: Response) => {
       data: {
         establishmentId,
         number: counter.nextInvoiceNumber - 1,
+        followsOrderId: previous?.id ?? null,
         tableId,
         customerName,
         customerId,

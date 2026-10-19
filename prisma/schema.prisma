@@ -327,6 +327,11 @@ model Order {
   stay            Stay?         @relation(fields: [stayId], references: [id])
   // Numéro de facture séquentiel, propre à l'établissement (affiché 0001)
   number          Int?
+  // Nouvelle commande d'un client dont la facture précédente est déjà payée
+  // (« Suite de la facture N° 0012 »)
+  followsOrderId  String?       @map("follows_order_id")
+  followsOrder    Order?        @relation("OrderFollowUp", fields: [followsOrderId], references: [id])
+  followUps       Order[]       @relation("OrderFollowUp")
   status          OrderStatus   @default(BROUILLON)
   subtotal        Decimal       @default(0) @db.Decimal(12, 2)
   discount        Decimal       @default(0) @db.Decimal(12, 2)

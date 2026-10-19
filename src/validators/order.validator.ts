@@ -5,6 +5,8 @@ export const createOrderSchema = z.object({
   customerName: z.string().optional(),
   customerId: z.string().uuid().optional(),
   establishmentId: z.string().uuid().optional(),
+  // Suite d'une facture déjà payée : même table et même client par défaut
+  followsOrderId: z.string().uuid().optional(),
 });
 
 export const setOrderCustomerSchema = z.object({
