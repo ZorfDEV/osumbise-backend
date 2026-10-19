@@ -18,6 +18,7 @@ import {
 import {
   addDays,
   assertRoomFree,
+  computeTotals,
   httpError,
   stayDetailInclude,
   taxFor,
@@ -51,7 +52,26 @@ export const listRooms = async (req: Request, res: Response) => {
       },
     },
   });
-  res.status(200).json({ rooms });
+
+  // État de la facture des séjours en cours (payée, avance, non payée),
+  // affiché sur les cartes des chambres occupées
+  const inHouseIds = rooms.flatMap((r) => r.stays.filter((s) => s.status === 'CHECKED_IN').map((s) => s.id));
+  const details = inHouseIds.length
+    ? await prisma.stay.findMany({ where: { id: { in: inHouseIds } }, include: stayDetailInclude })
+    : [];
+  const billing = new Map(
+    details.map((d) => {
+      const t = computeTotals(d);
+      return [d.id, { total: t.total, paid: t.paid, balance: t.balance }];
+    })
+  );
+
+  res.status(200).json({
+    rooms: rooms.map((r) => ({
+      ...r,
+      stays: r.stays.map((s) => ({ ...s, billing: billing.get(s.id) ?? null })),
+    })),
+  });
 };
 
 export const createRoom = async (req: Request, res: Response) => {
