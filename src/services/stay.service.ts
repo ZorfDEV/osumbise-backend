@@ -64,7 +64,7 @@ export const taxFor = async (establishmentId: string, category: Prisma.RoomCreat
 // Détail complet d'un séjour, tel qu'affiché à l'écran et sur la facture
 export const stayDetailInclude = {
   // En-tête de la facture : logo, nom et mentions légales
-  establishment: { select: { name: true, address: true, logo: true, phone: true, postalBox: true, nif: true, rc: true } },
+  establishment: { select: { name: true, address: true, logo: true, phone: true, email: true, postalBox: true, nif: true, rc: true } },
   room: { select: { id: true, number: true, building: true, category: true, floor: true, status: true } },
   group: { select: { id: true, name: true } },
   customer: { select: { id: true, name: true, phone: true, balance: true, creditLimit: true } },

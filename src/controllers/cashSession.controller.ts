@@ -91,7 +91,7 @@ export const getCashSession = async (req: Request, res: Response) => {
       cashRegister: {
         include: {
           establishment: {
-            select: { name: true, address: true, logo: true, phone: true, postalBox: true, nif: true, rc: true },
+            select: { name: true, address: true, logo: true, phone: true, email: true, postalBox: true, nif: true, rc: true },
           },
         },
       },

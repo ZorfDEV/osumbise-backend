@@ -103,6 +103,7 @@ model Establishment {
   logo           String?
   // Mentions légales, toutes facultatives, imprimées en tête des factures
   phone          String?
+  email          String?
   postalBox      String?           @map("postal_box")
   nif            String?
   rc             String?

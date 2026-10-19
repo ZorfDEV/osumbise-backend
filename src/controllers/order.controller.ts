@@ -65,7 +65,7 @@ export const getOrder = async (req: Request, res: Response) => {
       payments: true,
       statusHistory: { orderBy: { changedAt: 'asc' } },
       user: { select: { name: true } },
-      establishment: { select: { name: true, address: true, logo: true, phone: true, postalBox: true, nif: true, rc: true } },
+      establishment: { select: { name: true, address: true, logo: true, phone: true, email: true, postalBox: true, nif: true, rc: true } },
       customer: { select: { id: true, name: true, balance: true } },
       // Hôtel : consommation mise sur une chambre (affichée sur le ticket)
       stay: { select: { id: true, guestName: true, room: { select: { number: true, building: true } } } },

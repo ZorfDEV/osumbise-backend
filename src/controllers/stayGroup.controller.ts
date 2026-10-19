@@ -27,7 +27,7 @@ const notify = (establishmentId: string) => emitToEstablishment(establishmentId,
 
 const groupInclude = {
   customer: { select: { id: true, name: true, balance: true, creditLimit: true } },
-  establishment: { select: { name: true, address: true, logo: true, phone: true, postalBox: true, nif: true, rc: true } },
+  establishment: { select: { name: true, address: true, logo: true, phone: true, email: true, postalBox: true, nif: true, rc: true } },
   user: { select: { name: true } },
   stays: { include: stayDetailInclude, orderBy: { createdAt: 'asc' as const } },
 };
