@@ -291,7 +291,13 @@ export const updateOrderStatus = async (req: Request, res: Response) => {
   });
 
   const updatedOrder = await prisma.order.findUnique({ where: { id }, include: { table: true } });
-  emitToEstablishment(order.establishmentId, 'order:status_changed', { orderId: id, status });
+  // Numéro et table : la salle annonce « Commande N° 0012 prête — Table T03 »
+  emitToEstablishment(order.establishmentId, 'order:status_changed', {
+    orderId: id,
+    status,
+    number: updatedOrder?.number ?? null,
+    table: updatedOrder?.table?.label ?? null,
+  });
   res.status(200).json({ order: updatedOrder });
 };
 
