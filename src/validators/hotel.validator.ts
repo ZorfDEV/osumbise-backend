@@ -57,6 +57,8 @@ const stayBase = z.object({
   notes: z.string().max(1000).optional(),
   // Tarif négocié ; sinon celui de la chambre
   nightlyRate: z.number().nonnegative().optional(),
+  // Client enregistré (compte client) ; null le détache
+  customerId: z.string().uuid().nullable().optional(),
 });
 
 const datesInOrder = (s: { checkInDate?: string; checkOutDate?: string }) =>

@@ -611,6 +611,8 @@ model Customer {
   stayPayments    StayPayment[]
   // Réservations de groupe au nom de ce client (entreprise)
   stayGroups      StayGroup[]
+  // Séjours rattachés à ce client enregistré
+  stays           Stay[]
   createdAt       DateTime          @default(now()) @map("created_at")
   updatedAt       DateTime          @updatedAt @map("updated_at")
 
@@ -757,6 +759,9 @@ model Stay {
   payments        StayPayment[]
   // Consommations du bar/restaurant mises sur la chambre
   orders          Order[]
+  // Client enregistré (compte client) : historique de ses séjours, payeur proposé
+  customerId      String?       @map("customer_id")
+  customer        Customer?     @relation(fields: [customerId], references: [id])
   // Réservation de groupe (entreprise) : une facture unique pour toutes ses chambres
   groupId         String?       @map("group_id")
   group           StayGroup?    @relation(fields: [groupId], references: [id])

@@ -67,6 +67,7 @@ export const stayDetailInclude = {
   establishment: { select: { name: true, address: true, logo: true, phone: true, postalBox: true, nif: true, rc: true } },
   room: { select: { id: true, number: true, building: true, category: true, floor: true, status: true } },
   group: { select: { id: true, name: true } },
+  customer: { select: { id: true, name: true, phone: true, balance: true, creditLimit: true } },
   user: { select: { name: true } },
   payments: {
     orderBy: { createdAt: 'asc' },

@@ -201,6 +201,11 @@ export const createStay = async (req: Request, res: Response) => {
   }
   await assertRoomFree(room.id, checkIn, checkOut);
 
+  // Client enregistré : commun à tous les établissements du propriétaire
+  const customer = data.customerId
+    ? await assertInScope(() => req.db.customer.findFirst({ where: { id: data.customerId! } }), 'Client introuvable')
+    : null;
+
   const taxPerNight = await taxFor(room.establishmentId, room.category);
 
   const stay = await prisma.$transaction(async (tx) => {
@@ -208,6 +213,7 @@ export const createStay = async (req: Request, res: Response) => {
       data: {
         establishmentId: room.establishmentId,
         roomId: room.id,
+        customerId: customer?.id ?? null,
         guestName: data.guestName,
         guestPhone: data.guestPhone || null,
         guestIdNumber: data.guestIdNumber || null,
@@ -255,6 +261,10 @@ export const updateStay = async (req: Request, res: Response) => {
     }
   }
 
+  if (data.customerId) {
+    await assertInScope(() => req.db.customer.findFirst({ where: { id: data.customerId! } }), 'Client introuvable');
+  }
+
   // Séjour en cours : l'arrivée a eu lieu, sa date ne change plus
   const checkIn = existing.status === 'CHECKED_IN' || !data.checkInDate ? existing.checkInDate : toDay(data.checkInDate);
   const checkOut = data.checkOutDate ? toDay(data.checkOutDate) : existing.checkOutDate;
@@ -266,6 +276,7 @@ export const updateStay = async (req: Request, res: Response) => {
       where: { id: existing.id },
       data: {
         roomId: room.id,
+        customerId: data.customerId,
         guestName: data.guestName,
         guestPhone: data.guestPhone,
         guestIdNumber: data.guestIdNumber,

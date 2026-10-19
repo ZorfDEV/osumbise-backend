@@ -137,6 +137,8 @@ export const createStayGroup = async (req: Request, res: Response) => {
           establishmentId,
           roomId: room.id,
           groupId: created.id,
+          // Entreprise du groupe : les séjours figurent dans son historique
+          customerId: customer?.id ?? null,
           guestName: line.guestName || data.name,
           guestPhone: data.contactPhone || null,
           adults: line.adults,

@@ -40,6 +40,20 @@ export const getCustomer = async (req: Request, res: Response) => {
         take: 30,
         include: { stay: { select: { id: true, guestName: true, room: { select: { number: true, building: true } } } } },
       },
+      // Historique des séjours rattachés à ce client
+      stays: {
+        orderBy: { checkInDate: 'desc' },
+        take: 30,
+        select: {
+          id: true,
+          guestName: true,
+          status: true,
+          checkInDate: true,
+          checkOutDate: true,
+          room: { select: { number: true, building: true } },
+          establishment: { select: { name: true } },
+        },
+      },
     },
   });
 
