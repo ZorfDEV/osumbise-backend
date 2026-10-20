@@ -10,10 +10,10 @@ const router = Router();
 
 router.use(protect, scopeTenant);
 
-router.get('/', authorize('OWNER', 'ADMIN', 'CASHIER'), asyncHandler(listExpenses));
+router.get('/', authorize('OWNER', 'ADMIN'), asyncHandler(listExpenses));
 router.post(
   '/',
-  authorize('OWNER', 'ADMIN', 'CASHIER'),
+  authorize('OWNER', 'ADMIN'),
   validate(createExpenseSchema),
   asyncHandler(createExpense)
 );

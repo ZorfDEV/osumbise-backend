@@ -173,6 +173,10 @@ export const createCashMovement = async (req: Request, res: Response) => {
   if (session.closedAt) {
     return res.status(409).json({ message: 'Cette session de caisse est déjà clôturée' });
   }
+  // Une dépense ne peut être saisie que par le propriétaire ou l'administrateur
+  if (type === 'EXPENSE' && req.user!.role === 'CASHIER') {
+    return res.status(403).json({ message: 'Les dépenses sont saisies par le propriétaire ou l’administrateur' });
+  }
 
   // L'utilisateur saisit toujours une magnitude positive pour une dépense ou
   // un remboursement ; c'est ici qu'elle devient une sortie d'argent (négative).
