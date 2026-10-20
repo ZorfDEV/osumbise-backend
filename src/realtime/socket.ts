@@ -61,7 +61,10 @@ export const initSocket = (httpServer: HttpServer) => {
     // X-Establishment-Id), donc un événement d'un autre établissement est
     // sans effet visible. Un établissement créé après la connexion est pris
     // en compte à la reconnexion suivante.
-    if (user.role === 'OWNER') {
+    const multiAdmin =
+      user.role === 'ADMIN' &&
+      !!(await prisma.user.findUnique({ where: { id: user.id }, select: { multiEstablishment: true } }))?.multiEstablishment;
+    if (user.role === 'OWNER' || multiAdmin) {
       try {
         const establishments = await prisma.establishment.findMany({
           where: { organizationId: user.organizationId },

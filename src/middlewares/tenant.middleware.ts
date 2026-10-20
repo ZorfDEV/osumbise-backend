@@ -25,9 +25,16 @@ export const scopeTenant = async (req: Request, res: Response, next: NextFunctio
 
   try {
     const requested = requestedEstablishment(req);
-    // Seul un OWNER sans établissement fixe peut choisir ; pour les autres
-    // rôles, l'établissement vient du JWT et l'en-tête est ignoré.
-    if (requested && req.user.role === 'OWNER' && !req.user.establishmentId) {
+    // Un OWNER sans établissement fixe peut choisir, ainsi qu'un ADMIN à qui le
+    // propriétaire a donné accès à tous ses établissements ; pour les autres,
+    // l'établissement vient du JWT et l'en-tête est ignoré.
+    const ownerCanPick = req.user.role === 'OWNER' && !req.user.establishmentId;
+    const adminCanPick =
+      req.user.role === 'ADMIN' &&
+      !!requested &&
+      !!(await prisma.user.findUnique({ where: { id: req.user.id }, select: { multiEstablishment: true } }))
+        ?.multiEstablishment;
+    if (requested && (ownerCanPick || adminCanPick)) {
       // Vérifié en base à chaque requête : impossible de viser l'établissement
       // d'une autre organisation en forgeant l'en-tête
       const establishment = await prisma.establishment.findFirst({

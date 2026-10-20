@@ -21,6 +21,8 @@ export const updateUserSchema = z.object({
   role: z.enum(ASSIGNABLE_ROLES).optional(),
   establishmentId: z.string().uuid().optional(),
   isActive: z.boolean().optional(),
+  // Administrateur : accès à tous les établissements (propriétaire uniquement)
+  multiEstablishment: z.boolean().optional(),
 });
 
 export const resetPasswordSchema = z.object({

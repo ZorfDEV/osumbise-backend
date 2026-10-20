@@ -15,6 +15,7 @@ export const listUsers = async (req: Request, res: Response) => {
       role: true,
       establishmentId: true,
       isActive: true,
+      multiEstablishment: true,
       createdAt: true,
       establishment: { select: { name: true } },
     },
@@ -91,6 +92,13 @@ export const updateUser = async (req: Request, res: Response) => {
     );
   }
 
+  // Accès multi-établissements : décidé par le propriétaire, réservé aux
+  // administrateurs (retiré si l'utilisateur change de rôle)
+  if (data.multiEstablishment !== undefined && req.user!.role !== 'OWNER') {
+    return res.status(403).json({ message: 'Seul le propriétaire peut donner l’accès à tous les établissements' });
+  }
+  if ((data.role ?? existing.role) !== 'ADMIN') data.multiEstablishment = false;
+
   if (data.email && data.email !== existing.email) {
     const taken = await prisma.user.findUnique({ where: { email: data.email } });
     if (taken) return res.status(409).json({ message: 'Cet email est déjà utilisé' });
@@ -106,6 +114,7 @@ export const updateUser = async (req: Request, res: Response) => {
       role: true,
       establishmentId: true,
       isActive: true,
+      multiEstablishment: true,
     },
   });
 

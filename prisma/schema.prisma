@@ -153,6 +153,9 @@ model User {
   passwordHash       String          @map("password_hash")
   role               Role
   isActive           Boolean         @default(true) @map("is_active")
+  // Administrateur ayant accès à tous les établissements du propriétaire
+  // (même sélecteur que le propriétaire, mêmes droits d'administrateur partout)
+  multiEstablishment Boolean @default(false) @map("multi_establishment")
   // Accès transverse au tableau de bord plateforme (gestion des abonnements
   // de TOUTES les organisations) — indépendant du rôle par organisation
   // ci-dessus. Aucune UI ne permet de l'activer : à faire directement en

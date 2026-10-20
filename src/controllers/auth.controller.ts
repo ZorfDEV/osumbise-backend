@@ -161,6 +161,7 @@ export const login = async (req: Request, res: Response) => {
       organization: user.organization,
       hasSubscription: !!subscription,
       isPlatformAdmin: user.isPlatformAdmin,
+      multiEstablishment: user.multiEstablishment,
     },
   });
 };
@@ -192,6 +193,7 @@ export const me = async (req: Request, res: Response) => {
       establishmentId: true,
       isActive: true,
       isPlatformAdmin: true,
+      multiEstablishment: true,
       // Un OWNER n'a pas d'establishmentId fixe (voir resolveEstablishmentId) :
       // establishment sera alors null, le frontend retombe sur organization.name
       establishment: { select: { name: true, logo: true } },
