@@ -10,6 +10,7 @@ import {
   setOrderCustomerSchema,
   voidOrderItemSchema,
   cancelOrderSchema,
+  discountSchema,
 } from '../validators/order.validator';
 import { payOrderSchema } from '../validators/payment.validator';
 import {
@@ -27,6 +28,7 @@ import {
   listOrderVoids,
   listSales,
   searchOrders,
+  setOrderDiscount,
 } from '../controllers/order.controller';
 import { asyncHandler } from '../utils/jwt';
 
@@ -67,7 +69,9 @@ router.post(
   validate(voidOrderItemSchema),
   asyncHandler(voidOrderItemHandler)
 );
-router.post('/:id/cancel', authorize(...MANAGERS), validate(cancelOrderSchema), asyncHandler(cancelOrderHandler));
+// Annulation d'une facture et remise : propriétaire uniquement
+router.post('/:id/cancel', authorize('OWNER'), validate(cancelOrderSchema), asyncHandler(cancelOrderHandler));
+router.patch('/:id/discount', authorize('OWNER'), validate(discountSchema), asyncHandler(setOrderDiscount));
 
 router.patch(
   '/:id/customer',

@@ -3,6 +3,7 @@ import { protect, authorize } from '../middlewares/auth.middleware';
 import { scopeTenant } from '../middlewares/tenant.middleware';
 import { validate } from '../middlewares/validate.middleware';
 import { asyncHandler } from '../utils/jwt';
+import { discountSchema } from '../validators/order.validator';
 import {
   addStayPaymentSchema,
   cancelStaySchema,
@@ -43,6 +44,7 @@ import {
   getStay,
   listRooms,
   listInHouseGuests,
+  setStayDiscount,
   listStays,
   listTaxRates,
   updateRoom,
@@ -85,6 +87,8 @@ router.get('/stays/:id', authorize(...FRONT_DESK), asyncHandler(getStay));
 router.patch('/stays/:id', authorize(...FRONT_DESK), validate(updateStaySchema), asyncHandler(updateStay));
 router.post('/stays/:id/check-in', authorize(...FRONT_DESK), asyncHandler(checkIn));
 router.post('/stays/:id/check-out', authorize(...FRONT_DESK), asyncHandler(checkOut));
+// Remise sur la facture du séjour : propriétaire uniquement
+router.patch('/stays/:id/discount', authorize('OWNER'), validate(discountSchema), asyncHandler(setStayDiscount));
 router.post('/stays/:id/cancel', authorize(...FRONT_DESK), validate(cancelStaySchema), asyncHandler(cancelStay));
 router.post(
   '/stays/:id/payments',

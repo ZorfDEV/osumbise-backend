@@ -27,6 +27,8 @@ interface HotelReport {
   stayTax: number;
   // Prestations (pressing, room service…) des séjours terminés
   services: number;
+  // Remises accordées sur ces séjours
+  discounts: number;
   cancellationFees: number;
   billed: number;
   // Encaissé dans la période (avances et soldes), net des remboursements
@@ -51,9 +53,13 @@ const getHotelReport = async (req: Request, start: Date, end: Date): Promise<Hot
       nightlyRate: true,
       taxPerNight: true,
       charges: { select: { quantity: true, unitPrice: true } },
+      discount: true,
+      discountRate: true,
+      orders: { where: { status: { in: ['PAYEE', 'FERMEE'] } }, select: { payments: { select: { method: true, amount: true } } } },
     },
   });
   let nights = 0;
+  let discounts = 0;
   let lodging = 0;
   let stayTax = 0;
   let services = 0;
@@ -62,7 +68,15 @@ const getHotelReport = async (req: Request, start: Date, end: Date): Promise<Hot
     nights += n;
     lodging += n * Number(s.nightlyRate);
     stayTax += n * Number(s.taxPerNight);
-    services += s.charges.reduce((sum, c) => sum + c.quantity * Number(c.unitPrice), 0);
+    const stayServices = s.charges.reduce((sum, c) => sum + c.quantity * Number(c.unitPrice), 0);
+    services += stayServices;
+    // Remise du séjour (même calcul que computeTotals)
+    const roomCharges = s.orders.reduce(
+      (sum, o) => sum + o.payments.filter((p) => p.method === 'ROOM').reduce((t, p) => t + Number(p.amount), 0),
+      0
+    );
+    const base = n * Number(s.nightlyRate) + stayServices + roomCharges;
+    discounts += s.discountRate !== null ? Math.round((base * Number(s.discountRate)) / 100) : Math.min(Number(s.discount), base);
   }
 
   // Avances conservées : solde net encaissé des réservations annulées
@@ -100,8 +114,9 @@ const getHotelReport = async (req: Request, start: Date, end: Date): Promise<Hot
     lodging,
     stayTax,
     services,
+    discounts,
     cancellationFees,
-    billed: lodging + stayTax + services + cancellationFees,
+    billed: lodging + stayTax + services - discounts + cancellationFees,
     received: Object.fromEntries(received),
     receivedTotal,
     refunds,
@@ -255,6 +270,7 @@ export const buildReportCsv = (data: ReportData): string => {
     csv += toCsvRow(['Hébergement facturé', h.lodging]);
     csv += toCsvRow(['Taxe de séjour', h.stayTax]);
     csv += toCsvRow(['Prestations (pressing, room service…)', h.services]);
+    csv += toCsvRow(['Remises accordées', -h.discounts]);
     csv += toCsvRow(['Avances conservées (annulations)', h.cancellationFees]);
     csv += toCsvRow(['Total hébergement facturé', h.billed]);
     csv += toCsvRow(['Encaissé (avances et soldes, net)', h.receivedTotal]);
@@ -314,6 +330,7 @@ export const buildReportPdf = (data: ReportData, title: string): PDFKit.PDFDocum
     line('Hébergement facturé', formatFcfa(h.lodging));
     line('Taxe de séjour', formatFcfa(h.stayTax));
     line('Prestations (pressing, room service…)', formatFcfa(h.services));
+    line('Remises accordées', formatFcfa(-h.discounts));
     line('Avances conservées (annulations)', formatFcfa(h.cancellationFees));
     line('Total hébergement facturé', formatFcfa(h.billed));
     line('Encaissé (avances et soldes, net)', formatFcfa(h.receivedTotal));

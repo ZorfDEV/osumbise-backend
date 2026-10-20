@@ -6,6 +6,7 @@ import { assertInScope } from '../utils/assertInScope';
 import { assertUsableCashSession } from '../utils/cashSessionAccess';
 import { emitToEstablishment } from '../realtime/socket';
 import { assertCreditAllowed } from '../services/customerCredit.service';
+import { DiscountInput } from '../validators/order.validator';
 import {
   AddStayPaymentInput,
   CancelStayInput,
@@ -530,4 +531,24 @@ export const listInHouseGuests = async (req: Request, res: Response) => {
     },
   });
   res.status(200).json({ stays });
+};
+
+// PATCH /api/hotel/stays/:id/discount — remise sur la facture du séjour
+// (hors taxe de séjour). Propriétaire / administrateur.
+export const setStayDiscount = async (req: Request, res: Response) => {
+  const existing = await loadStay(req, req.params.id);
+  if (existing.status === 'CANCELLED') throw httpError('Séjour annulé : remise impossible', 409);
+  const { mode, value, reason } = req.body as DiscountInput;
+  await prisma.stay.update({
+    where: { id: existing.id },
+    data:
+      mode === 'NONE'
+        ? { discount: 0, discountRate: null, discountReason: null }
+        : mode === 'PERCENT'
+          ? { discountRate: value, discountReason: reason || null }
+          : { discount: value, discountRate: null, discountReason: reason || null },
+  });
+  const stay = await loadStay(req, existing.id);
+  notify(existing.establishmentId);
+  res.status(200).json({ stay: withTotals(stay) });
 };

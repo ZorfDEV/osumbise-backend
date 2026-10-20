@@ -53,6 +53,7 @@ const withGroupTotals = (group: LoadedGroup) => {
       tax: sum('tax'),
       charges: sum('charges'),
       services: sum('services'),
+      discount: sum('discount'),
       total: sum('total'),
       paid: sum('paid'),
       balance: sum('balance'),

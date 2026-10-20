@@ -334,7 +334,11 @@ model Order {
   followUps       Order[]       @relation("OrderFollowUp")
   status          OrderStatus   @default(BROUILLON)
   subtotal        Decimal       @default(0) @db.Decimal(12, 2)
+  // Remise sur la facture (propriétaire / administrateur) : en % (discountRate,
+  // recalculée quand les articles changent) ou en montant fixe (discount seul)
   discount        Decimal       @default(0) @db.Decimal(12, 2)
+  discountRate    Decimal?      @map("discount_rate") @db.Decimal(5, 2)
+  discountReason  String?       @map("discount_reason")
   tax             Decimal       @default(0) @db.Decimal(12, 2)
   total           Decimal       @default(0) @db.Decimal(12, 2)
   // Paiement en espèces supérieur au total : montant remis par le client et
@@ -772,6 +776,10 @@ model Stay {
   // Tarif et taxe figés à la réservation
   nightlyRate     Decimal       @map("nightly_rate") @db.Decimal(12, 2)
   taxPerNight     Decimal       @default(0) @map("tax_per_night") @db.Decimal(12, 2)
+  // Remise sur la facture du séjour (hors taxe de séjour) : % ou montant fixe
+  discount        Decimal       @default(0) @db.Decimal(12, 2)
+  discountRate    Decimal?      @map("discount_rate") @db.Decimal(5, 2)
+  discountReason  String?       @map("discount_reason")
   status          StayStatus    @default(RESERVED)
   notes           String?
   userId          String        @map("user_id") // réceptionniste qui a créé le séjour

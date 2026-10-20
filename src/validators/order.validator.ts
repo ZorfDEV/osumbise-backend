@@ -50,6 +50,17 @@ export const cancelOrderSchema = z.object({
   restock: z.boolean().optional(),
 });
 
+// Remise sur une facture : en %, en montant, ou retirée (NONE)
+export const discountSchema = z
+  .object({
+    mode: z.enum(['PERCENT', 'AMOUNT', 'NONE']),
+    value: z.number().nonnegative().optional(),
+    reason: z.string().trim().max(200).optional(),
+  })
+  .refine((d) => d.mode === 'NONE' || (d.value !== undefined && d.value > 0), { message: 'Indiquez la remise', path: ['value'] })
+  .refine((d) => d.mode !== 'PERCENT' || (d.value ?? 0) <= 100, { message: 'Au plus 100 %', path: ['value'] });
+
+export type DiscountInput = z.infer<typeof discountSchema>;
 export type VoidOrderItemInput = z.infer<typeof voidOrderItemSchema>;
 export type CancelOrderInput = z.infer<typeof cancelOrderSchema>;
 export type CreateOrderInput = z.infer<typeof createOrderSchema>;

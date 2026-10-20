@@ -16,6 +16,7 @@ import {
   UpdateOrderStatusInput,
   VoidOrderItemInput,
   CancelOrderInput,
+  DiscountInput,
 } from '../validators/order.validator';
 import { cancelOrderWithReason, cancelPaidOrder, voidOrderItem } from '../services/orderVoid.service';
 
@@ -276,7 +277,7 @@ export const updateOrderStatus = async (req: Request, res: Response) => {
   // peut être annulé ici, par n'importe quel membre de la salle.
   if (status === 'ANNULEE' && order.status !== 'BROUILLON') {
     return res.status(403).json({
-      message: 'Annulation réservée au propriétaire ou à l’administrateur, avec un motif',
+      message: 'Annulation réservée au propriétaire, avec un motif',
     });
   }
 
@@ -482,4 +483,27 @@ export const setOrderCustomer = async (req: Request, res: Response) => {
   });
 
   res.status(200).json({ order });
+};
+
+// PATCH /api/orders/:id/discount — remise sur la facture (avant ou après
+// consommation, tant qu'elle n'est pas payée). Propriétaire / administrateur.
+export const setOrderDiscount = async (req: Request, res: Response) => {
+  const { id } = req.params;
+  const { mode, value, reason } = req.body as DiscountInput;
+  const order = await assertInScope(() => req.db.order.findFirst({ where: { id } }), 'Commande introuvable');
+  if (['PAYEE', 'FERMEE', 'ANNULEE'].includes(order.status)) {
+    return res.status(409).json({ message: 'Facture déjà encaissée ou annulée : remise impossible' });
+  }
+  await prisma.order.update({
+    where: { id },
+    data:
+      mode === 'NONE'
+        ? { discount: 0, discountRate: null, discountReason: null }
+        : mode === 'PERCENT'
+          ? { discountRate: value, discountReason: reason || null }
+          : { discount: value, discountRate: null, discountReason: reason || null },
+  });
+  const updated = await recalculateOrderTotals(id);
+  emitToEstablishment(order.establishmentId, 'order:updated', { orderId: id });
+  res.status(200).json({ order: updated });
 };

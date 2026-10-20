@@ -99,6 +99,8 @@ export interface StayTotals {
   charges: number;
   // Prestations de l'hôtel (pressing, room service…)
   services: number;
+  // Remise accordée (hors taxe de séjour)
+  discount: number;
   total: number;
   paid: number;
   balance: number;
@@ -118,8 +120,14 @@ export const computeTotals = (stay: StayWithDetail): StayTotals => {
   );
   const services = stay.charges.reduce((sum, c) => sum + c.quantity * Number(c.unitPrice), 0);
   const paid = stay.payments.reduce((sum, p) => sum + Number(p.amount), 0);
-  const total = lodging + tax + charges + services;
-  return { nights, lodging, tax, charges, services, total, paid, balance: Math.round((total - paid) * 100) / 100 };
+  // Remise sur l'hébergement, les consommations et les prestations ; la taxe
+  // de séjour reste due en entier
+  const base = lodging + charges + services;
+  const discount = stay.discountRate !== null
+    ? Math.round((base * Number(stay.discountRate)) / 100)
+    : Math.min(Number(stay.discount), base);
+  const total = base - discount + tax;
+  return { nights, lodging, tax, charges, services, discount, total, paid, balance: Math.round((total - paid) * 100) / 100 };
 };
 
 export const withTotals = (stay: StayWithDetail) => ({ ...stay, totals: computeTotals(stay) });

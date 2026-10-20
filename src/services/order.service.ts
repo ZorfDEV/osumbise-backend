@@ -15,9 +15,16 @@ export const recalculateOrderTotals = async (orderId: string) => {
   // hors taxe. Chaque taxe est calculée par taux sur la base HT des articles
   // concernés, arrondie au franc (le FCFA n'a pas de centimes) — même calcul
   // que l'affichage de la facture (frontend : features/pos/taxes.ts)
+  // Remise : % recalculé sur le sous-total, ou montant fixe plafonné ; les
+  // taxes portent sur le HT après remise (bases réduites au prorata)
+  const discount = order.discountRate !== null
+    ? Math.round((subtotal * Number(order.discountRate)) / 100)
+    : Math.min(Number(order.discount), subtotal);
+  const ratio = subtotal > 0 ? (subtotal - discount) / subtotal : 1;
+
   const bases = new Map<string, number>();
   for (const item of items) {
-    const base = item.quantity * Number(item.unitPrice);
+    const base = item.quantity * Number(item.unitPrice) * ratio;
     for (const [kind, rate] of [['TVA', Number(item.taxRate)], ['CSS', Number(item.cssRate)]] as const) {
       if (rate) bases.set(`${kind}-${rate}`, (bases.get(`${kind}-${rate}`) ?? 0) + base);
     }
@@ -27,11 +34,10 @@ export const recalculateOrderTotals = async (orderId: string) => {
     0
   );
 
-  // Conserve une remise déjà posée sur la commande
-  const total = subtotal - Number(order.discount) + tax;
+  const total = subtotal - discount + tax;
 
   return prisma.order.update({
     where: { id: orderId },
-    data: { subtotal, tax, total },
+    data: { subtotal, discount, tax, total },
   });
 };
