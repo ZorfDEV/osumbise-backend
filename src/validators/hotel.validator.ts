@@ -28,11 +28,18 @@ export const updateRoomSchema = createRoomSchema
 
 // Changement d'état manuel (ménage terminé, hors service…). OCCUPIED n'est
 // pas proposé : il découle d'une arrivée enregistrée.
-export const updateRoomStatusSchema = z.object({
-  status: z.enum(ROOM_STATUSES).refine((s) => s !== 'OCCUPIED', {
-    message: 'Une chambre devient occupée en enregistrant l’arrivée d’un client',
-  }),
-});
+export const updateRoomStatusSchema = z
+  .object({
+    status: z.enum(ROOM_STATUSES).refine((s) => s !== 'OCCUPIED', {
+      message: 'Une chambre devient occupée en enregistrant l’arrivée d’un client',
+    }),
+    // Obligatoire pour mettre la chambre hors service
+    reason: z.string().trim().max(200).optional(),
+  })
+  .refine((d) => d.status !== 'OUT_OF_SERVICE' || (d.reason ?? '').length >= 3, {
+    message: 'Indiquez le motif de la mise hors service',
+    path: ['reason'],
+  });
 
 // --- Taxe de séjour ----------------------------------------------------
 

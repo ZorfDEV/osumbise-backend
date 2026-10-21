@@ -130,7 +130,7 @@ export const updateRoom = async (req: Request, res: Response) => {
 // PATCH /api/hotel/rooms/:id/status — ménage terminé, hors service…
 export const updateRoomStatus = async (req: Request, res: Response) => {
   const { id } = req.params;
-  const { status } = req.body as { status: 'AVAILABLE' | 'CLEANING' | 'OUT_OF_SERVICE' };
+  const { status, reason } = req.body as { status: 'AVAILABLE' | 'CLEANING' | 'OUT_OF_SERVICE'; reason?: string };
   const room = await assertInScope(() => req.db.room.findFirst({ where: { id } }), 'Chambre introuvable');
 
   const occupied = await prisma.stay.findFirst({ where: { roomId: id, status: 'CHECKED_IN' } });
@@ -138,7 +138,13 @@ export const updateRoomStatus = async (req: Request, res: Response) => {
     throw httpError(`Chambre occupée par ${occupied.guestName} : enregistrez d’abord son départ`, 409);
   }
 
-  const updated = await prisma.room.update({ where: { id }, data: { status } });
+  const updated = await prisma.room.update({
+    where: { id },
+    data:
+      status === 'OUT_OF_SERVICE'
+        ? { status, outOfServiceReason: reason, outOfServiceAt: new Date() }
+        : { status, outOfServiceReason: null, outOfServiceAt: null },
+  });
   notify(room.establishmentId);
   res.status(200).json({ room: updated });
 };

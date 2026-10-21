@@ -724,6 +724,9 @@ model Room {
   capacity        Int           @default(2)
   nightlyRate     Decimal       @map("nightly_rate") @db.Decimal(12, 2)
   status          RoomStatus    @default(AVAILABLE)
+  // Hors service : motif obligatoire et date (effacés à la remise en service)
+  outOfServiceReason String?    @map("out_of_service_reason")
+  outOfServiceAt     DateTime?  @map("out_of_service_at")
   notes           String?
   // Chambre retirée de la vente sans perdre son historique de séjours
   isActive        Boolean       @default(true) @map("is_active")
