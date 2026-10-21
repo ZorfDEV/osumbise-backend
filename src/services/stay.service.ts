@@ -131,3 +131,21 @@ export const computeTotals = (stay: StayWithDetail): StayTotals => {
 };
 
 export const withTotals = (stay: StayWithDetail) => ({ ...stay, totals: computeTotals(stay) });
+
+// Numéro de facture de l'hôtel (séjours et groupes) : compteur de
+// l'établissement, incrémenté atomiquement dans la transaction
+export const nextHotelInvoiceNumber = async (tx: Prisma.TransactionClient, establishmentId: string) => {
+  const counter = await tx.establishment.update({
+    where: { id: establishmentId },
+    data: { nextHotelInvoiceNumber: { increment: 1 } },
+    select: { nextHotelInvoiceNumber: true },
+  });
+  return counter.nextHotelInvoiceNumber - 1;
+};
+
+// « H12 », « h0012 », « R0012 », « 12 » : lettre éventuelle et numéro
+export const parseInvoiceQuery = (q: string): { letter: string | null; number: number | null } => {
+  const m = q.trim().match(/^([A-Za-z])?\s*#?0*(\d+)$/);
+  if (!m) return { letter: null, number: null };
+  return { letter: m[1]?.toUpperCase() ?? null, number: Number(m[2]) };
+};

@@ -20,6 +20,8 @@ import {
   addDays,
   assertRoomFree,
   computeTotals,
+  nextHotelInvoiceNumber,
+  parseInvoiceQuery,
   httpError,
   stayDetailInclude,
   taxFor,
@@ -238,9 +240,11 @@ export const createStay = async (req: Request, res: Response) => {
   const taxPerNight = await taxFor(room.establishmentId, room.category);
 
   const stay = await prisma.$transaction(async (tx) => {
+    const number = await nextHotelInvoiceNumber(tx, room.establishmentId);
     const created = await tx.stay.create({
       data: {
         establishmentId: room.establishmentId,
+        number,
         roomId: room.id,
         customerId: customer?.id ?? null,
         guestName: data.guestName,
@@ -575,4 +579,46 @@ export const setStayDiscount = async (req: Request, res: Response) => {
   const stay = await loadStay(req, existing.id);
   notify(existing.establishmentId);
   res.status(200).json({ stay: withTotals(stay) });
+};
+
+// GET /api/hotel/search?q= — retrouver une facture de l'hôtel : numéro
+// (H12, H0012, 12), nom du client ou du groupe. Séjours et groupes.
+export const searchHotelInvoices = async (req: Request, res: Response) => {
+  const q = String(req.query.q ?? '').trim();
+  if (!q) return res.status(200).json({ stays: [], groups: [] });
+  const { letter, number } = parseInvoiceQuery(q);
+  const byNumber = number !== null && (letter === null || letter === 'H');
+  const nameFilter = { contains: q, mode: 'insensitive' as const };
+
+  const [stays, groups] = await Promise.all([
+    req.db.stay.findMany({
+      where: { OR: [...(byNumber ? [{ number }] : []), { guestName: nameFilter }, { customer: { name: nameFilter } }] },
+      orderBy: { createdAt: 'desc' },
+      take: 15,
+      include: stayDetailInclude,
+    }),
+    req.db.stayGroup.findMany({
+      where: { OR: [...(byNumber ? [{ number }] : []), { name: nameFilter }] },
+      orderBy: { createdAt: 'desc' },
+      take: 10,
+      select: { id: true, number: true, name: true, createdAt: true, stays: { select: { status: true } } },
+    }),
+  ]);
+
+  res.status(200).json({
+    stays: stays.map((s) => {
+      const t = computeTotals(s);
+      return {
+        id: s.id,
+        number: s.number,
+        guestName: s.guestName,
+        status: s.status,
+        checkInDate: s.checkInDate,
+        room: s.room,
+        total: t.total,
+        balance: t.balance,
+      };
+    }),
+    groups,
+  });
 };

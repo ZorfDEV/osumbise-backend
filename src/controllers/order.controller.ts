@@ -19,6 +19,7 @@ import {
   DiscountInput,
 } from '../validators/order.validator';
 import { cancelOrderWithReason, cancelPaidOrder, voidOrderItem } from '../services/orderVoid.service';
+import { parseInvoiceQuery } from '../services/stay.service';
 
 // Workflow exact du cahier des charges (section 8), avec ANNULEE comme sortie
 // possible depuis n'importe quel statut avant paiement.
@@ -73,7 +74,7 @@ export const getOrder = async (req: Request, res: Response) => {
       payments: true,
       statusHistory: { orderBy: { changedAt: 'asc' } },
       user: { select: { name: true } },
-      establishment: { select: { name: true, address: true, logo: true, phone: true, email: true, postalBox: true, nif: true, rc: true } },
+      establishment: { select: { name: true, type: true, address: true, logo: true, phone: true, email: true, postalBox: true, nif: true, rc: true } },
       customer: { select: { id: true, name: true, balance: true } },
       // Hôtel : consommation mise sur une chambre (affichée sur le ticket)
       stay: { select: { id: true, guestName: true, room: { select: { number: true, building: true } } } },
@@ -358,7 +359,9 @@ export const listOrderVoids = async (req: Request, res: Response) => {
 export const searchOrders = async (req: Request, res: Response) => {
   const q = String(req.query.q ?? '').trim();
   if (!q) return res.status(200).json({ orders: [] });
-  const asNumber = /^#?\d+$/.test(q) ? Number(q.replace('#', '')) : null;
+  // « R0012 », « R12 », « 12 » ; « H… » désigne une facture de l'hôtel (autre recherche)
+  const parsed = parseInvoiceQuery(q);
+  const asNumber = parsed.number !== null && parsed.letter !== 'H' ? parsed.number : null;
   const orders = await req.db.order.findMany({
     where: {
       items: { some: {} },

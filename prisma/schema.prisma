@@ -103,6 +103,8 @@ model Establishment {
   logo           String?
   // Prochain numéro de facture (0001, 0002…) des commandes de cet établissement
   nextInvoiceNumber Int            @default(1) @map("next_invoice_number")
+  // Prochain numéro des factures de l'hôtel (séjours et groupes : H0001…)
+  nextHotelInvoiceNumber Int       @default(1) @map("next_hotel_invoice_number")
   // Mentions légales, toutes facultatives, imprimées en tête des factures
   phone          String?
   email          String?
@@ -793,6 +795,8 @@ model Stay {
   payments        StayPayment[]
   // Consommations du bar/restaurant mises sur la chambre
   orders          Order[]
+  // Numéro de facture de l'hôtel (affiché H0001), commun aux séjours et groupes
+  number          Int?
   // Client enregistré (compte client) : historique de ses séjours, payeur proposé
   customerId      String?       @map("customer_id")
   customer        Customer?     @relation(fields: [customerId], references: [id])
@@ -806,6 +810,7 @@ model Stay {
 
   @@index([establishmentId, checkInDate])
   @@index([roomId, status])
+  @@unique([establishmentId, number])
   @@map("stays")
 }
 
@@ -820,6 +825,8 @@ model StayGroup {
   establishmentId String        @map("establishment_id")
   establishment   Establishment @relation(fields: [establishmentId], references: [id])
   name            String
+  // Numéro de la facture de groupe (H0001…), même suite que les séjours
+  number          Int?
   // Entreprise payeuse (compte client), facultative
   customerId      String?       @map("customer_id")
   customer        Customer?     @relation(fields: [customerId], references: [id])
@@ -831,6 +838,7 @@ model StayGroup {
   createdAt       DateTime      @default(now()) @map("created_at")
   updatedAt       DateTime      @updatedAt @map("updated_at")
 
+  @@unique([establishmentId, number])
   @@map("stay_groups")
 }
 

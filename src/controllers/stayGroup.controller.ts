@@ -11,6 +11,7 @@ import {
   addDays,
   assertRoomFree,
   computeTotals,
+  nextHotelInvoiceNumber,
   httpError,
   stayDetailInclude,
   taxFor,
@@ -125,6 +126,7 @@ export const createStayGroup = async (req: Request, res: Response) => {
     const created = await tx.stayGroup.create({
       data: {
         establishmentId,
+        number: await nextHotelInvoiceNumber(tx, establishmentId),
         name: data.name,
         customerId: customer?.id ?? null,
         contactPhone: data.contactPhone || null,
@@ -137,6 +139,7 @@ export const createStayGroup = async (req: Request, res: Response) => {
       await tx.stay.create({
         data: {
           establishmentId,
+          number: await nextHotelInvoiceNumber(tx, establishmentId),
           roomId: room.id,
           groupId: created.id,
           // Entreprise du groupe : les séjours figurent dans son historique
