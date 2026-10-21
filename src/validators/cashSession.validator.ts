@@ -2,6 +2,8 @@ import { z } from 'zod';
 
 export const openCashSessionSchema = z.object({
   openingBalance: z.number().nonnegative(),
+  // Fin de service prévue (obligatoire pour une caissière)
+  plannedCloseAt: z.coerce.date().optional(),
 });
 
 export const closeCashSessionSchema = z.object({

@@ -547,6 +547,10 @@ model CashRegister {
   establishmentId String        @map("establishment_id")
   establishment   Establishment @relation(fields: [establishmentId], references: [id])
   name            String // ex. "Caisse #01"
+  // Verrouillée par le propriétaire : aucune session ne peut y être ouverte
+  isLocked        Boolean       @default(false) @map("is_locked")
+  lockedReason    String?       @map("locked_reason")
+  lockedAt        DateTime?     @map("locked_at")
   sessions        CashSession[]
 
   @@map("cash_registers")
@@ -560,6 +564,8 @@ model CashSession {
   openedBy           User         @relation("OpenedBy", fields: [openedById], references: [id])
   openedAt           DateTime     @default(now()) @map("opened_at")
   openingBalance     Decimal      @map("opening_balance") @db.Decimal(12, 2)
+  // Fin de service prévue, indiquée à l'ouverture (rappel de clôture)
+  plannedCloseAt     DateTime?    @map("planned_close_at")
   closedById         String?      @map("closed_by_id")
   closedBy           User?        @relation("ClosedBy", fields: [closedById], references: [id])
   closedAt           DateTime?    @map("closed_at")

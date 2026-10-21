@@ -2,9 +2,9 @@ import { Router } from 'express';
 import { protect, authorize } from '../middlewares/auth.middleware';
 import { scopeTenant } from '../middlewares/tenant.middleware';
 import { validate } from '../middlewares/validate.middleware';
-import { createCashRegisterSchema } from '../validators/cashRegister.validator';
+import { createCashRegisterSchema, lockCashRegisterSchema } from '../validators/cashRegister.validator';
 import { openCashSessionSchema } from '../validators/cashSession.validator';
-import { listCashRegisters, createCashRegister } from '../controllers/cashRegister.controller';
+import { listCashRegisters, createCashRegister, lockCashRegister } from '../controllers/cashRegister.controller';
 import { openCashSession, listSessionsForRegister } from '../controllers/cashSession.controller';
 import { asyncHandler } from '../utils/jwt';
 
@@ -19,6 +19,9 @@ router.post(
   validate(createCashRegisterSchema),
   asyncHandler(createCashRegister)
 );
+
+// Verrouiller / déverrouiller une caisse : propriétaire uniquement
+router.patch('/:id/lock', authorize('OWNER'), validate(lockCashRegisterSchema), asyncHandler(lockCashRegister));
 
 router.get('/:registerId/sessions', asyncHandler(listSessionsForRegister));
 router.post(

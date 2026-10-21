@@ -22,12 +22,39 @@ const CASH_AFFECTING_TYPES: CashMovementType[] = [
 
 export const openCashSession = async (req: Request, res: Response) => {
   const { registerId } = req.params;
-  const { openingBalance } = req.body as OpenCashSessionInput;
+  const { openingBalance, plannedCloseAt } = req.body as OpenCashSessionInput;
 
-  await assertInScope(
+  const register = await assertInScope(
     () => req.db.cashRegister.findFirst({ where: { id: registerId } }),
     'Caisse introuvable'
   );
+  if (register.isLocked) {
+    return res.status(409).json({
+      message: `Caisse verrouillée par le propriétaire${register.lockedReason ? ` : ${register.lockedReason}` : ''}`,
+    });
+  }
+
+  // Fin de service prévue : obligatoire pour une caissière, dans les 24 h
+  const now = new Date();
+  if (req.user!.role === 'CASHIER' && !plannedCloseAt) {
+    return res.status(400).json({ message: 'Indiquez l’heure de fin de votre service' });
+  }
+  if (plannedCloseAt && (plannedCloseAt <= now || plannedCloseAt.getTime() - now.getTime() > 24 * 60 * 60 * 1000)) {
+    return res.status(400).json({ message: 'L’heure de fin doit être dans les 24 heures à venir' });
+  }
+
+  // Une caissière ouvre au plus 2 sessions par jour (jour de Libreville, UTC+1)
+  if (req.user!.role === 'CASHIER') {
+    const LIBREVILLE_OFFSET_MS = 60 * 60 * 1000;
+    const local = new Date(now.getTime() + LIBREVILLE_OFFSET_MS);
+    const startOfDay = new Date(Date.UTC(local.getUTCFullYear(), local.getUTCMonth(), local.getUTCDate()) - LIBREVILLE_OFFSET_MS);
+    const todayCount = await req.db.cashSession.count({
+      where: { openedById: req.user!.id, openedAt: { gte: startOfDay } },
+    });
+    if (todayCount >= 2) {
+      return res.status(409).json({ message: 'Vous avez déjà ouvert 2 sessions aujourd’hui : maximum atteint' });
+    }
+  }
 
   const alreadyOpen = await req.db.cashSession.findFirst({
     where: { cashRegisterId: registerId, closedAt: null },
@@ -51,6 +78,7 @@ export const openCashSession = async (req: Request, res: Response) => {
       cashRegisterId: registerId,
       openedById: req.user!.id,
       openingBalance,
+      plannedCloseAt: plannedCloseAt ?? null,
     },
   });
 

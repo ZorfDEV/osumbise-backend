@@ -5,4 +5,11 @@ export const createCashRegisterSchema = z.object({
   establishmentId: z.string().uuid().optional(),
 });
 
+// Verrouiller / déverrouiller une caisse (propriétaire)
+export const lockCashRegisterSchema = z.object({
+  locked: z.boolean(),
+  reason: z.string().trim().max(200).optional(),
+});
+
+export type LockCashRegisterInput = z.infer<typeof lockCashRegisterSchema>;
 export type CreateCashRegisterInput = z.infer<typeof createCashRegisterSchema>;
