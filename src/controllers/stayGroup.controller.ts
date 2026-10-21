@@ -98,6 +98,7 @@ export const createStayGroup = async (req: Request, res: Response) => {
   }
 
   const checkIn = data.checkInNow ? today() : toDay(data.checkInDate);
+  if (checkIn < today()) throw httpError('Impossible de réserver à une date passée : l’arrivée doit être aujourd’hui ou plus tard', 400);
   let checkOut = toDay(data.checkOutDate);
   if (checkOut <= checkIn) checkOut = addDays(checkIn, 1);
 

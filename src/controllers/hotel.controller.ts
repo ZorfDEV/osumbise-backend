@@ -212,6 +212,8 @@ export const createStay = async (req: Request, res: Response) => {
 
   // Arrivée immédiate (client sans réservation) : à partir d'aujourd'hui
   const checkIn = data.checkInNow ? today() : toDay(data.checkInDate);
+  // Pas de réservation dans le passé (fuseau de l'hôtel : Africa/Libreville)
+  if (checkIn < today()) throw httpError('Impossible de réserver à une date passée : l’arrivée doit être aujourd’hui ou plus tard', 400);
   let checkOut = toDay(data.checkOutDate);
   if (checkOut <= checkIn) checkOut = addDays(checkIn, 1);
 
@@ -289,6 +291,14 @@ export const updateStay = async (req: Request, res: Response) => {
   // Séjour en cours : l'arrivée a eu lieu, sa date ne change plus
   const checkIn = existing.status === 'CHECKED_IN' || !data.checkInDate ? existing.checkInDate : toDay(data.checkInDate);
   const checkOut = data.checkOutDate ? toDay(data.checkOutDate) : existing.checkOutDate;
+  // Une réservation déplacée ne peut pas l'être dans le passé ; un départ
+  // ne peut pas être fixé avant aujourd'hui
+  if (existing.status === 'RESERVED' && data.checkInDate && checkIn.getTime() !== existing.checkInDate.getTime() && checkIn < today()) {
+    throw httpError('Impossible de réserver à une date passée : l’arrivée doit être aujourd’hui ou plus tard', 400);
+  }
+  if (data.checkOutDate && checkOut < today()) {
+    throw httpError('La date de départ ne peut pas être passée', 400);
+  }
   if (checkOut <= checkIn) throw httpError('La date de départ doit être après la date d’arrivée', 400);
   await assertRoomFree(room.id, checkIn, checkOut, existing.id);
 
