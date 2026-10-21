@@ -22,8 +22,19 @@ export const createCashRegister = async (req: Request, res: Response) => {
   const { name } = req.body as CreateCashRegisterInput;
   const establishmentId = await resolveEstablishmentId(req);
 
+  // Une caissière peut créer une caisse, au plus 2 par jour (jour de Libreville)
+  if (req.user!.role === 'CASHIER') {
+    const LIBREVILLE_OFFSET_MS = 60 * 60 * 1000;
+    const local = new Date(Date.now() + LIBREVILLE_OFFSET_MS);
+    const startOfDay = new Date(Date.UTC(local.getUTCFullYear(), local.getUTCMonth(), local.getUTCDate()) - LIBREVILLE_OFFSET_MS);
+    const created = await req.db.cashRegister.count({ where: { createdById: req.user!.id, createdAt: { gte: startOfDay } } });
+    if (created >= 2) {
+      return res.status(409).json({ message: 'Vous avez déjà créé 2 caisses aujourd’hui : maximum atteint' });
+    }
+  }
+
   const cashRegister = await prisma.cashRegister.create({
-    data: { name, establishmentId },
+    data: { name, establishmentId, createdById: req.user!.id },
   });
 
   res.status(201).json({ cashRegister });

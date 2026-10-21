@@ -13,9 +13,10 @@ const router = Router();
 router.use(protect, scopeTenant);
 
 router.get('/', asyncHandler(listCashRegisters));
+// Caissière autorisée : 2 caisses par jour au plus (contrôlé dans le controller)
 router.post(
   '/',
-  authorize('OWNER', 'ADMIN'),
+  authorize('OWNER', 'ADMIN', 'CASHIER'),
   validate(createCashRegisterSchema),
   asyncHandler(createCashRegister)
 );

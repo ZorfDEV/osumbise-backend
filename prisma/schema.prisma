@@ -551,6 +551,9 @@ model CashRegister {
   isLocked        Boolean       @default(false) @map("is_locked")
   lockedReason    String?       @map("locked_reason")
   lockedAt        DateTime?     @map("locked_at")
+  // Qui l'a créée et quand (une caissière en crée au plus 2 par jour)
+  createdById     String?       @map("created_by_id")
+  createdAt       DateTime      @default(now()) @map("created_at")
   sessions        CashSession[]
 
   @@map("cash_registers")
