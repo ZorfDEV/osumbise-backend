@@ -877,6 +877,10 @@ model StayPayment {
   note      String?
   // Méthode CREDIT : compte client débité (entreprise, client habitué…)
   customerId String?      @map("customer_id")
+  // Espèces supérieures au reste à payer : montant remis et monnaie rendue
+  // (seul le dû est enregistré et entre en caisse)
+  cashReceived Decimal?    @map("cash_received") @db.Decimal(12, 2)
+  changeGiven  Decimal     @default(0) @map("change_given") @db.Decimal(12, 2)
   customer   Customer?    @relation(fields: [customerId], references: [id])
   userId    String        @map("user_id")
   user      User          @relation(fields: [userId], references: [id])

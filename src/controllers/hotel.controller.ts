@@ -483,14 +483,22 @@ export const addStayPayment = async (req: Request, res: Response) => {
     await assertUsableCashSession(req, cashSessionId);
   }
 
+  // Espèces supérieures au reste à payer : on rend la monnaie, seul le dû est
+  // enregistré (et entre en caisse) ; le montant remis reste sur le versement
+  const due = Math.max(0, withTotals(existing).totals.balance);
+  if (method === 'CASH' && due <= 0) throw httpError('La facture est déjà soldée : rien à encaisser', 409);
+  const change = method === 'CASH' && amount > due ? Math.round((amount - due) * 100) / 100 : 0;
+  const applied = amount - change;
+
   await prisma.$transaction(async (tx) => {
     await tx.stayPayment.create({
       data: {
         stayId: existing.id,
         method,
-        amount,
+        amount: applied,
         note: note || null,
         customerId: creditCustomer?.id ?? null,
+        ...(change > 0 ? { cashReceived: amount, changeGiven: change } : {}),
         userId: req.user!.id,
       },
     });
@@ -503,7 +511,7 @@ export const addStayPayment = async (req: Request, res: Response) => {
         data: {
           cashSessionId,
           type: movementType,
-          amount,
+          amount: applied,
           note: `Séjour chambre ${existing.room.number} — ${existing.guestName}`,
         },
       });

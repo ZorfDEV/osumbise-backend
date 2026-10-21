@@ -255,9 +255,16 @@ export const addStayGroupPayment = async (req: Request, res: Response) => {
   if (creditCustomer) assertCreditAllowed(creditCustomer, amount);
   if (cashSessionId) await assertUsableCashSession(req, cashSessionId);
 
+  // Espèces supérieures au reste à payer du groupe : monnaie rendue, seul le
+  // dû est réparti sur les chambres et entre en caisse
+  const groupDue = Math.max(0, billed.reduce((sum, s) => sum + s.totals.balance, 0));
+  if (method === 'CASH' && groupDue <= 0) throw httpError('La facture du groupe est déjà soldée : rien à encaisser', 409);
+  const change = method === 'CASH' && amount > groupDue ? Math.round((amount - groupDue) * 100) / 100 : 0;
+  const applied = amount - change;
+
   // Répartition
   const allocations: { stayId: string; amount: number }[] = [];
-  let remaining = amount;
+  let remaining = applied;
   for (const stay of billed) {
     if (remaining <= 0) break;
     const due = Math.max(0, stay.totals.balance);
@@ -276,7 +283,7 @@ export const addStayGroupPayment = async (req: Request, res: Response) => {
 
   const label = `Versement du groupe ${group.name}${note ? ` — ${note}` : ''}`;
   await prisma.$transaction(async (tx) => {
-    for (const a of allocations) {
+    for (const [i, a] of allocations.entries()) {
       await tx.stayPayment.create({
         data: {
           stayId: a.stayId,
@@ -284,6 +291,8 @@ export const addStayGroupPayment = async (req: Request, res: Response) => {
           amount: Math.round(a.amount * 100) / 100,
           note: label,
           customerId: creditCustomer?.id ?? null,
+          // Montant remis et monnaie rendue : notés une fois, sur le dernier versement
+          ...(change > 0 && i === allocations.length - 1 ? { cashReceived: amount, changeGiven: change } : {}),
           userId: req.user!.id,
         },
       });
@@ -294,7 +303,7 @@ export const addStayGroupPayment = async (req: Request, res: Response) => {
     const movementType = PAYMENT_TO_CASH_MOVEMENT[method];
     if (cashSessionId && movementType) {
       await tx.cashMovement.create({
-        data: { cashSessionId, type: movementType, amount, note: `Groupe ${group.name} (${billed.length} chambres)` },
+        data: { cashSessionId, type: movementType, amount: applied, note: `Groupe ${group.name} (${billed.length} chambres)` },
       });
     }
   });
