@@ -188,6 +188,7 @@ export const addOrderItem = async (req: Request, res: Response) => {
       unitPrice: getEffectivePrice(product),
       taxRate: product.tva,
       cssRate: product.css,
+      priceIncludesTax: product.priceIncludesTax,
       note,
     },
   });

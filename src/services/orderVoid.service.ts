@@ -93,7 +93,9 @@ export const voidOrderItem = async (params: {
         productName: item.product.name,
         quantity: params.quantity,
         // Montant non facturé, taxe comprise
-        amount: Math.round(Number(item.unitPrice) * params.quantity * (1 + (Number(item.taxRate) + Number(item.cssRate)) / 100)),
+        amount: item.priceIncludesTax
+          ? Math.round(Number(item.unitPrice) * params.quantity)
+          : Math.round(Number(item.unitPrice) * params.quantity * (1 + (Number(item.taxRate) + Number(item.cssRate)) / 100)),
         reason: params.reason,
         wasPrepared,
         userId: params.userId,

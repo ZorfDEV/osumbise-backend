@@ -238,6 +238,9 @@ model Product {
   // TVA (ex. 18) et CSS — contribution spéciale de solidarité (ex. 1)
   tva             Decimal       @default(0) @db.Decimal(5, 2)
   css             Decimal       @default(0) @db.Decimal(5, 2)
+  // Prix TTC fixe : sellingPrice est le prix payé par le client, taxes
+  // incluses ; la facture en déduit HT, TVA et CSS et tombe pile sur ce prix
+  priceIncludesTax Boolean      @default(false) @map("price_includes_tax")
   unit            Unit          @default(UNIT)
   // Stock de VENTE (bar, rayon) : seul décrémenté par les ventes
   stockCurrent    Decimal       @default(0) @map("stock_current") @db.Decimal(10, 3)
@@ -409,6 +412,8 @@ model OrderItem {
   // Taxe du produit (%) figée au moment de l'ajout, ajoutée au prix hors taxe
   taxRate   Decimal @default(0) @map("tax_rate") @db.Decimal(5, 2) // TVA
   cssRate   Decimal @default(0) @map("css_rate") @db.Decimal(5, 2) // CSS
+  // unitPrice est un prix TTC (produit à prix TTC fixe), figé à l'ajout
+  priceIncludesTax Boolean @default(false) @map("price_includes_tax")
   note      String?
 
   @@map("order_items")

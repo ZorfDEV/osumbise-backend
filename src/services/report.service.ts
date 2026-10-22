@@ -168,7 +168,10 @@ export const getReportData = async (
       // Coût ACTUEL du produit, pas figé au moment de la vente — voir la note
       // dans dashboard.controller.ts sur cette limite du MVP
       const cost = item.quantity * Number(item.product.cost);
-      const itemProfit = item.quantity * Number(item.unitPrice) - cost;
+      const unitHt = item.priceIncludesTax
+        ? Number(item.unitPrice) / (1 + (Number(item.taxRate) + Number(item.cssRate)) / 100)
+        : Number(item.unitPrice);
+      const itemProfit = item.quantity * unitHt - cost;
       profit += itemProfit;
       merchandiseCost += cost;
 
