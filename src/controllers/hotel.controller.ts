@@ -456,6 +456,7 @@ export const cancelStay = async (req: Request, res: Response) => {
           amount: -entry.amount,
           note: 'Remboursement de l’avance (annulation)',
           customerId: entry.customerId,
+          cashSessionId: cashSessionId ?? null,
           userId: req.user!.id,
         },
       });
@@ -518,6 +519,7 @@ export const addStayPayment = async (req: Request, res: Response) => {
         amount: applied,
         note: note || null,
         customerId: creditCustomer?.id ?? null,
+        cashSessionId: cashSessionId ?? null,
         ...(change > 0 ? { cashReceived: amount, changeGiven: change } : {}),
         userId: req.user!.id,
       },

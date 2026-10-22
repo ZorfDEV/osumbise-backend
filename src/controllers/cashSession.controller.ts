@@ -8,6 +8,7 @@ import {
   CloseCashSessionInput,
   CreateCashMovementInput,
 } from '../validators/cashSession.validator';
+import { nightsBetween } from '../services/stay.service';
 
 // Seuls ces types affectent le tiroir-caisse physique. Une vente carte ou
 // mobile money ne fait entrer aucun billet, donc n'a pas sa place dans le
@@ -150,7 +151,51 @@ export const getCashSession = async (req: Request, res: Response) => {
     },
   });
 
-  res.status(200).json({ session: { ...session, orders } });
+  // Hôtel : versements de séjours encaissés dans la session. Chaque séjour
+  // compte une fois, en nuitées × tarif, regroupé par catégorie de chambre
+  const stayPayments = await prisma.stayPayment.findMany({
+    where: { cashSessionId: id },
+    select: {
+      method: true,
+      amount: true,
+      stay: {
+        select: {
+          id: true,
+          status: true,
+          nightlyRate: true,
+          checkInDate: true,
+          checkOutDate: true,
+          room: { select: { category: true } },
+        },
+      },
+    },
+  });
+  const byMethod = new Map<string, number>();
+  const stays = new Map<string, (typeof stayPayments)[number]['stay']>();
+  for (const p of stayPayments) {
+    byMethod.set(p.method, (byMethod.get(p.method) ?? 0) + Number(p.amount));
+    // Réservation annulée (avance remboursée ou conservée) : aucune nuit vendue
+    if (p.stay.status !== 'CANCELLED') stays.set(p.stay.id, p.stay);
+  }
+  const roomLines = new Map<string, { category: string; nightlyRate: number; nights: number; amount: number }>();
+  for (const st of stays.values()) {
+    const rate = Number(st.nightlyRate);
+    const nights = nightsBetween(st.checkInDate, st.checkOutDate);
+    const key = `${st.room.category}-${rate}`;
+    const line = roomLines.get(key) ?? { category: st.room.category, nightlyRate: rate, nights: 0, amount: 0 };
+    line.nights += nights;
+    line.amount += nights * rate;
+    roomLines.set(key, line);
+  }
+  const CATEGORY_ORDER = ['STANDARD', 'VIP', 'SUITE'];
+  const hotel = {
+    rooms: [...roomLines.values()].sort(
+      (a, b) => CATEGORY_ORDER.indexOf(a.category) - CATEGORY_ORDER.indexOf(b.category) || a.nightlyRate - b.nightlyRate
+    ),
+    payments: [...byMethod.entries()].map(([method, amount]) => ({ method, amount })).filter((p) => p.amount !== 0),
+  };
+
+  res.status(200).json({ session: { ...session, orders, hotel } });
 };
 
 export const closeCashSession = async (req: Request, res: Response) => {

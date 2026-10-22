@@ -295,6 +295,7 @@ export const addStayGroupPayment = async (req: Request, res: Response) => {
           amount: Math.round(a.amount * 100) / 100,
           note: label,
           customerId: creditCustomer?.id ?? null,
+          cashSessionId: cashSessionId ?? null,
           // Montant remis et monnaie rendue : notés une fois, sur le dernier versement
           ...(change > 0 && i === allocations.length - 1 ? { cashReceived: amount, changeGiven: change } : {}),
           userId: req.user!.id,
