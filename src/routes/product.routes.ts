@@ -39,7 +39,7 @@ router.post(
   uploadProductImageMiddleware,
   asyncHandler(uploadProductImage)
 );
-router.delete('/:id', authorize('OWNER', 'ADMIN'), asyncHandler(deleteProduct));
+router.delete('/:id', authorize('OWNER', 'ADMIN', 'STOCK_KEEPER'), asyncHandler(deleteProduct));
 
 router.use('/:productId/recipe-items', recipeItemRoutes);
 

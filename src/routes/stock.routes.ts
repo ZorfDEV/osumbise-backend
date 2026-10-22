@@ -2,13 +2,15 @@ import { Router } from 'express';
 import { protect, authorize } from '../middlewares/auth.middleware';
 import { scopeTenant } from '../middlewares/tenant.middleware';
 import { validate } from '../middlewares/validate.middleware';
-import { entrySchema, lossSchema, adjustmentSchema } from '../validators/stock.validator';
+import { entrySchema, lossSchema, adjustmentSchema, transferSchema, correctionSchema } from '../validators/stock.validator';
 import {
   createEntry,
   createLoss,
   createAdjustment,
   listMovements,
   listAlerts,
+  createTransfer,
+  correctMovement,
 } from '../controllers/stock.controller';
 import { asyncHandler } from '../utils/jwt';
 
@@ -37,5 +39,9 @@ router.post(
   validate(adjustmentSchema),
   asyncHandler(createAdjustment)
 );
+
+// Déstockage réserve → vente, et correction d'une entrée (motif obligatoire)
+router.post('/transfer', authorize('OWNER', 'ADMIN', 'STOCK_KEEPER'), validate(transferSchema), asyncHandler(createTransfer));
+router.post('/movements/:id/correct', authorize('OWNER', 'ADMIN', 'STOCK_KEEPER'), validate(correctionSchema), asyncHandler(correctMovement));
 
 export default router;

@@ -239,7 +239,10 @@ model Product {
   tva             Decimal       @default(0) @db.Decimal(5, 2)
   css             Decimal       @default(0) @db.Decimal(5, 2)
   unit            Unit          @default(UNIT)
+  // Stock de VENTE (bar, rayon) : seul décrémenté par les ventes
   stockCurrent    Decimal       @default(0) @map("stock_current") @db.Decimal(10, 3)
+  // RÉSERVE (magasin) : alimentée par les livraisons, déstockée vers la vente
+  stockReserve    Decimal       @default(0) @map("stock_reserve") @db.Decimal(10, 3)
   stockMin        Decimal       @default(0) @map("stock_min") @db.Decimal(10, 3)
   image           String?
   // Remise en pourcentage (0-100) appliquée sur sellingPrice, facultative.
@@ -457,6 +460,16 @@ enum StockMovementType {
   PERTE
   CASSE
   AJUSTEMENT
+  // Déstockage réserve → vente (ou retour vente → réserve)
+  TRANSFERT
+  // Correction d'une entrée saisie avec une erreur de quantité
+  CORRECTION
+}
+
+// Stock concerné par un mouvement
+enum StockLocation {
+  SALES // stock de vente
+  RESERVE // réserve (magasin)
 }
 
 model StockMovement {
@@ -464,7 +477,11 @@ model StockMovement {
   productId   String            @map("product_id")
   product     Product           @relation(fields: [productId], references: [id])
   type        StockMovementType
+  // Stock touché : vente ou réserve (stockBefore/stockAfter le concernent)
+  location    StockLocation     @default(SALES)
   quantity    Decimal           @db.Decimal(10, 3) // toujours positive ; le sens est donné par "type"
+  // Correction : entrée corrigée par ce mouvement
+  correctsMovementId String?    @map("corrects_movement_id")
   stockBefore Decimal           @map("stock_before") @db.Decimal(10, 3)
   stockAfter  Decimal           @map("stock_after") @db.Decimal(10, 3)
   orderId     String?           @map("order_id") // rempli si déclenché automatiquement par une vente
