@@ -350,6 +350,8 @@ model Order {
   // monnaie rendue (imprimés sur le ticket ; seul le dû entre en caisse)
   cashReceived    Decimal?      @map("cash_received") @db.Decimal(12, 2)
   changeGiven     Decimal       @default(0) @map("change_given") @db.Decimal(12, 2)
+  // Nom de la personne qui a encaissé (« Encaissé par » sur le ticket)
+  paidByName      String?       @map("paid_by_name")
 
   items          OrderItem[]
   payments       Payment[]

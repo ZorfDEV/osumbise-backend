@@ -154,10 +154,12 @@ export const payOrder = async (
       }
     }
 
+    const payer = await tx.user.findUnique({ where: { id: userId }, select: { name: true } });
     await tx.order.update({
       where: { id: orderId },
       data: {
         status: 'PAYEE',
+        paidByName: payer?.name ?? null,
         ...(change > 0 ? { cashReceived: cashGiven, changeGiven: change } : {}), ...(stayId && payments.some((p) => p.method === 'ROOM') ? { stayId } : {}) },
     });
     await tx.orderStatusHistory.create({ data: { orderId, status: 'PAYEE' } });
