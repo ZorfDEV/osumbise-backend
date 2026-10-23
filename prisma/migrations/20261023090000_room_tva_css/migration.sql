@@ -1,0 +1,8 @@
+-- AlterTable
+ALTER TABLE "room_category_taxes" ADD COLUMN     "css" DECIMAL(5,2) NOT NULL DEFAULT 0,
+ADD COLUMN     "tva" DECIMAL(5,2) NOT NULL DEFAULT 0;
+
+-- AlterTable
+ALTER TABLE "stays" ADD COLUMN     "css_rate" DECIMAL(5,2) NOT NULL DEFAULT 0,
+ADD COLUMN     "tax_rate" DECIMAL(5,2) NOT NULL DEFAULT 0;
+

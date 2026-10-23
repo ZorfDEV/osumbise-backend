@@ -152,16 +152,16 @@ export const updateRoomStatus = async (req: Request, res: Response) => {
 };
 
 // =====================================================================
-// Taxe de séjour (par type de chambre)
+// TVA et CSS des chambres (par type de chambre)
 // =====================================================================
 
 export const listTaxRates = async (req: Request, res: Response) => {
   const rows = await req.db.roomCategoryTax.findMany();
   // Les trois types toujours présents, 0 si non configuré
-  const rates = CATEGORIES.map((category) => ({
-    category,
-    taxPerNight: Number(rows.find((r) => r.category === category)?.taxPerNight ?? 0),
-  }));
+  const rates = CATEGORIES.map((category) => {
+    const row = rows.find((r) => r.category === category);
+    return { category, tva: Number(row?.tva ?? 0), css: Number(row?.css ?? 0) };
+  });
   res.status(200).json({ rates });
 };
 
@@ -172,8 +172,8 @@ export const updateTaxRates = async (req: Request, res: Response) => {
     rates.map((r) =>
       prisma.roomCategoryTax.upsert({
         where: { establishmentId_category: { establishmentId, category: r.category } },
-        create: { establishmentId, category: r.category, taxPerNight: r.taxPerNight },
-        update: { taxPerNight: r.taxPerNight },
+        create: { establishmentId, category: r.category, tva: r.tva, css: r.css },
+        update: { tva: r.tva, css: r.css },
       })
     )
   );
@@ -237,7 +237,7 @@ export const createStay = async (req: Request, res: Response) => {
     ? await assertInScope(() => req.db.customer.findFirst({ where: { id: data.customerId! } }), 'Client introuvable')
     : null;
 
-  const taxPerNight = await taxFor(room.establishmentId, room.category);
+  const taxes = await taxFor(room.establishmentId, room.category);
 
   const stay = await prisma.$transaction(async (tx) => {
     const number = await nextHotelInvoiceNumber(tx, room.establishmentId);
@@ -255,7 +255,7 @@ export const createStay = async (req: Request, res: Response) => {
         checkInDate: checkIn,
         checkOutDate: checkOut,
         nightlyRate: data.nightlyRate ?? room.nightlyRate,
-        taxPerNight,
+        ...taxes,
         notes: data.notes || null,
         userId: req.user!.id,
         ...(data.checkInNow ? { status: 'CHECKED_IN' as const, checkedInAt: new Date() } : {}),
@@ -278,16 +278,16 @@ export const updateStay = async (req: Request, res: Response) => {
 
   let room = existing.room;
   let nightlyRate = data.nightlyRate;
-  let taxPerNight: number | undefined;
+  let taxes: Awaited<ReturnType<typeof taxFor>> | undefined;
   if (data.roomId && data.roomId !== existing.roomId) {
     const newRoom = await assertInScope(
       () => req.db.room.findFirst({ where: { id: data.roomId, isActive: true } }),
       'Chambre introuvable ou retirée de la vente'
     );
     room = newRoom;
-    // Nouveau type de chambre : tarif et taxe suivent, sauf tarif négocié saisi
+    // Nouveau type de chambre : tarif et taxes suivent, sauf tarif négocié saisi
     nightlyRate = nightlyRate ?? Number(newRoom.nightlyRate);
-    taxPerNight = await taxFor(newRoom.establishmentId, newRoom.category);
+    taxes = await taxFor(newRoom.establishmentId, newRoom.category);
     if (existing.status === 'CHECKED_IN') {
       const occupied = await prisma.stay.findFirst({ where: { roomId: newRoom.id, status: 'CHECKED_IN' } });
       if (occupied) throw httpError(`Chambre occupée par ${occupied.guestName}`, 409);
@@ -327,7 +327,7 @@ export const updateStay = async (req: Request, res: Response) => {
         checkInDate: checkIn,
         checkOutDate: checkOut,
         nightlyRate,
-        taxPerNight,
+        ...taxes,
       },
     });
     // Changement de chambre en cours de séjour : l'ancienne est à nettoyer

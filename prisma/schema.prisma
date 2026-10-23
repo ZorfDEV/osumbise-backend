@@ -784,7 +784,12 @@ model RoomCategoryTax {
   establishmentId String        @map("establishment_id")
   establishment   Establishment @relation(fields: [establishmentId], references: [id])
   category        RoomCategory
+  // Ancienne taxe de séjour fixe par nuit : plus utilisée (remplacée par
+  // TVA et CSS en %), conservée pour l'historique
   taxPerNight     Decimal       @default(0) @map("tax_per_night") @db.Decimal(12, 2)
+  // TVA et CSS (%) ajoutées au prix HT de la nuitée, optionnelles (0 = aucune)
+  tva             Decimal       @default(0) @db.Decimal(5, 2)
+  css             Decimal       @default(0) @db.Decimal(5, 2)
   updatedAt       DateTime      @updatedAt @map("updated_at")
 
   @@unique([establishmentId, category])
@@ -819,6 +824,10 @@ model Stay {
   // Tarif et taxe figés à la réservation
   nightlyRate     Decimal       @map("nightly_rate") @db.Decimal(12, 2)
   taxPerNight     Decimal       @default(0) @map("tax_per_night") @db.Decimal(12, 2)
+  // TVA et CSS (%) sur l'hébergement HT, figées à la réservation (les anciens
+  // séjours ont 0 et gardent leur taxe de séjour fixe taxPerNight)
+  taxRate         Decimal       @default(0) @map("tax_rate") @db.Decimal(5, 2)
+  cssRate         Decimal       @default(0) @map("css_rate") @db.Decimal(5, 2)
   // Remise sur la facture du séjour (hors taxe de séjour) : % ou montant fixe
   discount        Decimal       @default(0) @db.Decimal(12, 2)
   discountRate    Decimal?      @map("discount_rate") @db.Decimal(5, 2)

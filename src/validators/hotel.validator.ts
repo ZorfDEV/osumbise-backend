@@ -45,7 +45,7 @@ export const updateRoomStatusSchema = z
 
 export const updateTaxRatesSchema = z.object({
   rates: z
-    .array(z.object({ category: z.enum(ROOM_CATEGORIES), taxPerNight: z.number().nonnegative() }))
+    .array(z.object({ category: z.enum(ROOM_CATEGORIES), tva: z.number().min(0).max(100), css: z.number().min(0).max(100) }))
     .min(1),
   establishmentId: z.string().uuid().optional(),
 });

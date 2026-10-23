@@ -52,13 +52,15 @@ export const assertRoomFree = async (
   }
 };
 
-// Taxe de séjour par nuit pour un type de chambre (0 si non configurée)
+// TVA et CSS (%) d'un type de chambre, à figer sur le séjour (0 si non
+// configurées). La taxe de séjour fixe n'est plus appliquée aux nouveaux séjours.
 export const taxFor = async (establishmentId: string, category: Prisma.RoomCreateInput['category']) => {
-  if (!category) return 0;
+  const none = { taxRate: 0, cssRate: 0, taxPerNight: 0 };
+  if (!category) return none;
   const rate = await prisma.roomCategoryTax.findUnique({
     where: { establishmentId_category: { establishmentId, category } },
   });
-  return rate ? Number(rate.taxPerNight) : 0;
+  return rate ? { ...none, taxRate: Number(rate.tva), cssRate: Number(rate.css) } : none;
 };
 
 // Détail complet d'un séjour, tel qu'affiché à l'écran et sur la facture
@@ -94,8 +96,15 @@ type StayWithDetail = Prisma.StayGetPayload<{ include: typeof stayDetailInclude 
 
 export interface StayTotals {
   nights: number;
+  // Hébergement HT (nuits × tarif)
   lodging: number;
+  // Ancienne taxe de séjour fixe (séjours enregistrés avant TVA/CSS)
   tax: number;
+  // TVA et CSS sur l'hébergement (après remise), arrondies au franc
+  vat: number;
+  css: number;
+  taxRate: number;
+  cssRate: number;
   charges: number;
   // Prestations de l'hôtel (pressing, room service…)
   services: number;
@@ -106,28 +115,73 @@ export interface StayTotals {
   balance: number;
 }
 
-// Montant dû : nuits × tarif + nuits × taxe de séjour + consommations mises
-// sur la chambre (seule la part réglée en ROOM d'une commande y figure),
+// Montants d'un séjour (facture, rapports) : hébergement HT, consommations
+// et prestations, remise, puis TVA et CSS sur l'hébergement remisé.
+// Prix de la nuitée TTC = prix HT + TVA + CSS (aucune taxe si 0 %).
+export const stayAmounts = (s: {
+  nights: number;
+  nightlyRate: number;
+  taxPerNight: number;
+  taxRate: number;
+  cssRate: number;
+  charges: number;
+  services: number;
+  discount: number;
+  discountRate: number | null;
+}) => {
+  const lodging = s.nights * s.nightlyRate;
+  // Ancienne taxe de séjour fixe (0 pour les nouveaux séjours), due en entier
+  const tax = s.nights * s.taxPerNight;
+  // Remise sur l'hébergement, les consommations et les prestations
+  const base = lodging + s.charges + s.services;
+  const discount = s.discountRate !== null ? Math.round((base * s.discountRate) / 100) : Math.min(s.discount, base);
+  // Taxes sur la part hébergement, au prorata de la remise
+  const ratio = base > 0 ? (base - discount) / base : 1;
+  const vat = Math.round((lodging * ratio * s.taxRate) / 100);
+  const css = Math.round((lodging * ratio * s.cssRate) / 100);
+  return { lodging, tax, vat, css, discount, total: base - discount + tax + vat + css };
+};
+
+// Montant dû : hébergement + taxes + consommations mises sur la chambre
+// (seule la part réglée en ROOM d'une commande y figure) + prestations,
 // moins les versements déjà reçus.
 export const computeTotals = (stay: StayWithDetail): StayTotals => {
   // Séjour en cours : la date de départ prévue fait foi jusqu'au départ réel
   const nights = nightsBetween(stay.checkInDate, stay.checkOutDate);
-  const lodging = nights * Number(stay.nightlyRate);
-  const tax = nights * Number(stay.taxPerNight);
   const charges = stay.orders.reduce(
     (sum, o) => sum + o.payments.filter((p) => p.method === 'ROOM').reduce((s, p) => s + Number(p.amount), 0),
     0
   );
   const services = stay.charges.reduce((sum, c) => sum + c.quantity * Number(c.unitPrice), 0);
   const paid = stay.payments.reduce((sum, p) => sum + Number(p.amount), 0);
-  // Remise sur l'hébergement, les consommations et les prestations ; la taxe
-  // de séjour reste due en entier
-  const base = lodging + charges + services;
-  const discount = stay.discountRate !== null
-    ? Math.round((base * Number(stay.discountRate)) / 100)
-    : Math.min(Number(stay.discount), base);
-  const total = base - discount + tax;
-  return { nights, lodging, tax, charges, services, discount, total, paid, balance: Math.round((total - paid) * 100) / 100 };
+  const taxRate = Number(stay.taxRate);
+  const cssRate = Number(stay.cssRate);
+  const { lodging, tax, vat, css, discount, total } = stayAmounts({
+    nights,
+    nightlyRate: Number(stay.nightlyRate),
+    taxPerNight: Number(stay.taxPerNight),
+    taxRate,
+    cssRate,
+    charges,
+    services,
+    discount: Number(stay.discount),
+    discountRate: stay.discountRate !== null ? Number(stay.discountRate) : null,
+  });
+  return {
+    nights,
+    lodging,
+    tax,
+    vat,
+    css,
+    taxRate,
+    cssRate,
+    charges,
+    services,
+    discount,
+    total,
+    paid,
+    balance: Math.round((total - paid) * 100) / 100,
+  };
 };
 
 export const withTotals = (stay: StayWithDetail) => ({ ...stay, totals: computeTotals(stay) });

@@ -1,5 +1,6 @@
 import { Request } from 'express';
 import PDFDocument from 'pdfkit';
+import { stayAmounts } from './stay.service';
 
 interface ReportData {
   period: { start: Date; end: Date };
@@ -25,6 +26,9 @@ interface HotelReport {
   nights: number;
   lodging: number;
   stayTax: number;
+  // TVA et CSS sur l'hébergement
+  stayVat: number;
+  stayCss: number;
   // Prestations (pressing, room service…) des séjours terminés
   services: number;
   // Remises accordées sur ces séjours
@@ -52,6 +56,8 @@ const getHotelReport = async (req: Request, start: Date, end: Date): Promise<Hot
       checkOutDate: true,
       nightlyRate: true,
       taxPerNight: true,
+      taxRate: true,
+      cssRate: true,
       charges: { select: { quantity: true, unitPrice: true } },
       discount: true,
       discountRate: true,
@@ -62,21 +68,35 @@ const getHotelReport = async (req: Request, start: Date, end: Date): Promise<Hot
   let discounts = 0;
   let lodging = 0;
   let stayTax = 0;
+  let stayVat = 0;
+  let stayCss = 0;
   let services = 0;
   for (const s of checkedOut) {
     const n = Math.max(1, Math.round((s.checkOutDate.getTime() - s.checkInDate.getTime()) / DAY_MS));
     nights += n;
-    lodging += n * Number(s.nightlyRate);
-    stayTax += n * Number(s.taxPerNight);
     const stayServices = s.charges.reduce((sum, c) => sum + c.quantity * Number(c.unitPrice), 0);
     services += stayServices;
-    // Remise du séjour (même calcul que computeTotals)
     const roomCharges = s.orders.reduce(
       (sum, o) => sum + o.payments.filter((p) => p.method === 'ROOM').reduce((t, p) => t + Number(p.amount), 0),
       0
     );
-    const base = n * Number(s.nightlyRate) + stayServices + roomCharges;
-    discounts += s.discountRate !== null ? Math.round((base * Number(s.discountRate)) / 100) : Math.min(Number(s.discount), base);
+    // Même calcul que la facture (computeTotals)
+    const a = stayAmounts({
+      nights: n,
+      nightlyRate: Number(s.nightlyRate),
+      taxPerNight: Number(s.taxPerNight),
+      taxRate: Number(s.taxRate),
+      cssRate: Number(s.cssRate),
+      charges: roomCharges,
+      services: stayServices,
+      discount: Number(s.discount),
+      discountRate: s.discountRate !== null ? Number(s.discountRate) : null,
+    });
+    lodging += a.lodging;
+    stayTax += a.tax;
+    stayVat += a.vat;
+    stayCss += a.css;
+    discounts += a.discount;
   }
 
   // Avances conservées : solde net encaissé des réservations annulées
@@ -113,10 +133,12 @@ const getHotelReport = async (req: Request, start: Date, end: Date): Promise<Hot
     nights,
     lodging,
     stayTax,
+    stayVat,
+    stayCss,
     services,
     discounts,
     cancellationFees,
-    billed: lodging + stayTax + services - discounts + cancellationFees,
+    billed: lodging + stayTax + stayVat + stayCss + services - discounts + cancellationFees,
     received: Object.fromEntries(received),
     receivedTotal,
     refunds,
@@ -271,7 +293,9 @@ export const buildReportCsv = (data: ReportData): string => {
     csv += toCsvRow(['Séjours terminés', h.checkedOutStays]);
     csv += toCsvRow(['Nuitées', h.nights]);
     csv += toCsvRow(['Hébergement facturé', h.lodging]);
-    csv += toCsvRow(['Taxe de séjour', h.stayTax]);
+    csv += toCsvRow(['TVA hébergement', h.stayVat]);
+    csv += toCsvRow(['CSS hébergement', h.stayCss]);
+    if (h.stayTax) csv += toCsvRow(['Taxe de séjour (ancienne)', h.stayTax]);
     csv += toCsvRow(['Prestations (pressing, room service…)', h.services]);
     csv += toCsvRow(['Remises accordées', -h.discounts]);
     csv += toCsvRow(['Avances conservées (annulations)', h.cancellationFees]);
@@ -331,7 +355,9 @@ export const buildReportPdf = (data: ReportData, title: string): PDFKit.PDFDocum
     doc.fontSize(11);
     line('Séjours terminés', `${h.checkedOutStays} (${h.nights} nuitées)`);
     line('Hébergement facturé', formatFcfa(h.lodging));
-    line('Taxe de séjour', formatFcfa(h.stayTax));
+    line('TVA hébergement', formatFcfa(h.stayVat));
+    line('CSS hébergement', formatFcfa(h.stayCss));
+    if (h.stayTax) line('Taxe de séjour (ancienne)', formatFcfa(h.stayTax));
     line('Prestations (pressing, room service…)', formatFcfa(h.services));
     line('Remises accordées', formatFcfa(-h.discounts));
     line('Avances conservées (annulations)', formatFcfa(h.cancellationFees));
