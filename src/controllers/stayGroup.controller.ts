@@ -52,8 +52,6 @@ const withGroupTotals = (group: LoadedGroup) => {
       nights: sum('nights'),
       lodging: sum('lodging'),
       tax: sum('tax'),
-      vat: sum('vat'),
-      css: sum('css'),
       charges: sum('charges'),
       services: sum('services'),
       discount: sum('discount'),
@@ -119,7 +117,7 @@ export const createStayGroup = async (req: Request, res: Response) => {
     }
   }
 
-  const taxes = new Map<string, Awaited<ReturnType<typeof taxFor>>>();
+  const taxes = new Map<string, number>();
   for (const room of rooms) {
     if (!taxes.has(room.category)) taxes.set(room.category, await taxFor(establishmentId, room.category));
   }
@@ -153,7 +151,7 @@ export const createStayGroup = async (req: Request, res: Response) => {
           checkInDate: checkIn,
           checkOutDate: checkOut,
           nightlyRate: line.nightlyRate ?? room.nightlyRate,
-          ...(taxes.get(room.category) ?? {}),
+          taxPerNight: taxes.get(room.category) ?? 0,
           userId: req.user!.id,
           ...(data.checkInNow ? { status: 'CHECKED_IN' as const, checkedInAt: new Date() } : {}),
         },
