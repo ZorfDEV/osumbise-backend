@@ -136,6 +136,14 @@ export const groupPaymentSchema = addStayPaymentSchema;
 // Annulation d'une réservation : que faire de l'avance déjà versée ?
 // REFUND = rendue au client (sortie de caisse), RETAIN = conservée (frais
 // d'annulation, comptée dans les rapports)
+// Changement de chambre (panne de clim, problème de plomberie…) : motif
+// obligatoire, l'ancienne chambre peut être mise hors service au passage
+export const moveStaySchema = z.object({
+  roomId: z.string().uuid(),
+  reason: z.string().trim().min(3, 'Indiquez le motif du changement').max(200),
+  outOfService: z.boolean().optional().default(false),
+});
+
 export const cancelStaySchema = z.object({
   advance: z.enum(['REFUND', 'RETAIN']).optional(),
   cashSessionId: z.string().uuid().optional(),
@@ -170,6 +178,7 @@ export type HotelServiceInput = z.infer<typeof hotelServiceSchema>;
 export type UpdateHotelServiceInput = z.infer<typeof updateHotelServiceSchema>;
 export type StayChargeInput = z.infer<typeof stayChargeSchema>;
 export type CancelStayInput = z.infer<typeof cancelStaySchema>;
+export type MoveStayInput = z.infer<typeof moveStaySchema>;
 
 export type CreateStayGroupInput = z.infer<typeof createStayGroupSchema>;
 export type CreateRoomInput = z.infer<typeof createRoomSchema>;

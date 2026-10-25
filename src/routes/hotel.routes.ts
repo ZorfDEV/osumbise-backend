@@ -7,6 +7,7 @@ import { discountSchema } from '../validators/order.validator';
 import {
   addStayPaymentSchema,
   cancelStaySchema,
+  moveStaySchema,
   hotelServiceSchema,
   updateHotelServiceSchema,
   stayChargeSchema,
@@ -37,6 +38,7 @@ import {
 import {
   addStayPayment,
   cancelStay,
+  moveStay,
   checkIn,
   checkOut,
   createRoom,
@@ -93,6 +95,8 @@ router.post('/stays/:id/check-out', authorize(...FRONT_DESK), asyncHandler(check
 // Remise sur la facture du séjour : propriétaire uniquement
 router.patch('/stays/:id/discount', authorize('OWNER'), validate(discountSchema), asyncHandler(setStayDiscount));
 router.post('/stays/:id/cancel', authorize(...FRONT_DESK), validate(cancelStaySchema), asyncHandler(cancelStay));
+// Changement de chambre (anomalie dans la chambre) : même facture, même tarif
+router.post('/stays/:id/move', authorize(...FRONT_DESK), validate(moveStaySchema), asyncHandler(moveStay));
 router.post(
   '/stays/:id/payments',
   authorize(...FRONT_DESK),

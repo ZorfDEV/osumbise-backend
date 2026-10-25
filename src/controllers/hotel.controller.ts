@@ -12,6 +12,7 @@ import {
   CancelStayInput,
   CreateRoomInput,
   CreateStayInput,
+  MoveStayInput,
   UpdateRoomInput,
   UpdateStayInput,
   UpdateTaxRatesInput,
@@ -396,6 +397,61 @@ export const checkOut = async (req: Request, res: Response) => {
       data: { status: 'CHECKED_OUT', checkedOutAt: new Date(), checkOutDate },
     });
     await tx.room.update({ where: { id: existing.roomId }, data: { status: 'CLEANING' } });
+    return tx.stay.findUniqueOrThrow({ where: { id: existing.id }, include: stayDetailInclude });
+  });
+
+  notify(existing.establishmentId);
+  res.status(200).json({ stay: withTotals(stay) });
+};
+
+// POST /api/hotel/stays/:id/move { roomId, reason, outOfService } — le client
+// change de chambre (anomalie : climatisation, plomberie…). Même facture, même
+// tarif ; le motif est noté sur le séjour. En cours de séjour, l'ancienne
+// chambre passe à nettoyer, ou hors service avec ce motif si demandé.
+export const moveStay = async (req: Request, res: Response) => {
+  const existing = await loadStay(req, req.params.id);
+  const { roomId, reason, outOfService } = req.body as MoveStayInput;
+  if (existing.status !== 'RESERVED' && existing.status !== 'CHECKED_IN') {
+    throw httpError('Ce séjour est terminé ou annulé : la chambre ne peut plus changer', 409);
+  }
+  if (roomId === existing.roomId) throw httpError('Choisissez une autre chambre que la chambre actuelle', 400);
+
+  const newRoom = await assertInScope(
+    () => req.db.room.findFirst({ where: { id: roomId, isActive: true } }),
+    'Chambre introuvable ou retirée de la vente'
+  );
+  if (newRoom.establishmentId !== existing.establishmentId) throw httpError('La chambre doit être dans le même hôtel', 400);
+  if (newRoom.status === 'OUT_OF_SERVICE') throw httpError(`Chambre ${newRoom.number} hors service`, 409);
+  if (existing.adults + existing.children > newRoom.capacity) {
+    throw httpError(`La chambre ${newRoom.number} accueille ${newRoom.capacity} personne(s) au maximum`, 409);
+  }
+  if (existing.status === 'CHECKED_IN') {
+    const occupied = await prisma.stay.findFirst({ where: { roomId: newRoom.id, status: 'CHECKED_IN' } });
+    if (occupied) throw httpError(`Chambre ${newRoom.number} occupée par ${occupied.guestName}`, 409);
+  }
+  await assertRoomFree(newRoom.id, existing.checkInDate, existing.checkOutDate, existing.id);
+
+  const oldNumber = existing.room.number;
+  const mention = `Changement de chambre ${oldNumber} → ${newRoom.number} le ${new Date().toLocaleDateString('fr-FR', { timeZone: 'Africa/Libreville' })} : ${reason}`;
+
+  const stay = await prisma.$transaction(async (tx) => {
+    await tx.stay.update({
+      where: { id: existing.id },
+      data: { roomId: newRoom.id, notes: existing.notes ? `${existing.notes}\n${mention}` : mention },
+    });
+    if (existing.status === 'CHECKED_IN') {
+      await tx.room.update({ where: { id: newRoom.id }, data: { status: 'OCCUPIED' } });
+    }
+    // Ancienne chambre : hors service (avec le motif) si demandé ; sinon, si
+    // le client y a dormi, à nettoyer
+    if (outOfService) {
+      await tx.room.update({
+        where: { id: existing.roomId },
+        data: { status: 'OUT_OF_SERVICE', outOfServiceReason: reason, outOfServiceAt: new Date() },
+      });
+    } else if (existing.status === 'CHECKED_IN') {
+      await tx.room.update({ where: { id: existing.roomId }, data: { status: 'CLEANING' } });
+    }
     return tx.stay.findUniqueOrThrow({ where: { id: existing.id }, include: stayDetailInclude });
   });
 
