@@ -8,7 +8,7 @@ import {
   CloseCashSessionInput,
   CreateCashMovementInput,
 } from '../validators/cashSession.validator';
-import { nightsBetween } from '../services/stay.service';
+import { billedCheckOut, nightsBetween } from '../services/stay.service';
 
 // Seuls ces types affectent le tiroir-caisse physique. Une vente carte ou
 // mobile money ne fait entrer aucun billet, donc n'a pas sa place dans le
@@ -180,7 +180,7 @@ export const getCashSession = async (req: Request, res: Response) => {
   const roomLines = new Map<string, { category: string; nightlyRate: number; nights: number; amount: number }>();
   for (const st of stays.values()) {
     const rate = Number(st.nightlyRate);
-    const nights = nightsBetween(st.checkInDate, st.checkOutDate);
+    const nights = nightsBetween(st.checkInDate, billedCheckOut(st));
     const key = `${st.room.category}-${rate}`;
     const line = roomLines.get(key) ?? { category: st.room.category, nightlyRate: rate, nights: 0, amount: 0 };
     line.nights += nights;

@@ -22,6 +22,14 @@ export const addDays = (d: Date, n: number) => new Date(d.getTime() + n * DAY_MS
 export const nightsBetween = (checkIn: Date, checkOut: Date) =>
   Math.max(1, Math.round((checkOut.getTime() - checkIn.getTime()) / DAY_MS));
 
+// Date jusqu'à laquelle les nuits sont facturées. Client encore présent après
+// son départ prévu (séjour prolongé sans changer la date) : les nuits courent
+// jusqu'à aujourd'hui. Au départ, checkOutDate prend la date réelle.
+export const billedCheckOut = (stay: { status: StayStatus; checkOutDate: Date }) => {
+  const now = today();
+  return stay.status === 'CHECKED_IN' && now > stay.checkOutDate ? now : stay.checkOutDate;
+};
+
 // Séjours qui bloquent une chambre : réservés ou en cours
 const BLOCKING: StayStatus[] = ['RESERVED', 'CHECKED_IN'];
 
@@ -94,6 +102,10 @@ type StayWithDetail = Prisma.StayGetPayload<{ include: typeof stayDetailInclude 
 
 export interface StayTotals {
   nights: number;
+  // Nuits comptées jusqu'à cette date (aujourd'hui si le séjour est prolongé)
+  billedCheckOutDate: Date;
+  // Client toujours présent après sa date de départ prévue
+  extended: boolean;
   lodging: number;
   tax: number;
   charges: number;
@@ -110,8 +122,11 @@ export interface StayTotals {
 // sur la chambre (seule la part réglée en ROOM d'une commande y figure),
 // moins les versements déjà reçus.
 export const computeTotals = (stay: StayWithDetail): StayTotals => {
-  // Séjour en cours : la date de départ prévue fait foi jusqu'au départ réel
-  const nights = nightsBetween(stay.checkInDate, stay.checkOutDate);
+  // Séjour en cours : la date de départ prévue fait foi jusqu'au départ réel,
+  // sauf si le client est resté au-delà (les nuits courent jusqu'à aujourd'hui)
+  const billedCheckOutDate = billedCheckOut(stay);
+  const extended = billedCheckOutDate > stay.checkOutDate;
+  const nights = nightsBetween(stay.checkInDate, billedCheckOutDate);
   const lodging = nights * Number(stay.nightlyRate);
   const tax = nights * Number(stay.taxPerNight);
   const charges = stay.orders.reduce(
@@ -127,7 +142,19 @@ export const computeTotals = (stay: StayWithDetail): StayTotals => {
     ? Math.round((base * Number(stay.discountRate)) / 100)
     : Math.min(Number(stay.discount), base);
   const total = base - discount + tax;
-  return { nights, lodging, tax, charges, services, discount, total, paid, balance: Math.round((total - paid) * 100) / 100 };
+  return {
+    nights,
+    billedCheckOutDate,
+    extended,
+    lodging,
+    tax,
+    charges,
+    services,
+    discount,
+    total,
+    paid,
+    balance: Math.round((total - paid) * 100) / 100,
+  };
 };
 
 export const withTotals = (stay: StayWithDetail) => ({ ...stay, totals: computeTotals(stay) });

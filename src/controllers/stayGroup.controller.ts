@@ -42,7 +42,9 @@ type LoadedGroup = Awaited<ReturnType<typeof loadGroup>>;
 const withGroupTotals = (group: LoadedGroup) => {
   const stays = group.stays.map(withTotals);
   const billed = stays.filter((s) => s.status !== 'CANCELLED');
-  const sum = (k: keyof (typeof billed)[number]['totals']) =>
+  // Champs numériques des totaux (pas la date ni l'indicateur de prolongation)
+  type NumericTotal = Exclude<keyof (typeof billed)[number]['totals'], 'billedCheckOutDate' | 'extended'>;
+  const sum = (k: NumericTotal) =>
     Math.round(billed.reduce((total, s) => total + s.totals[k], 0) * 100) / 100;
   return {
     ...group,
