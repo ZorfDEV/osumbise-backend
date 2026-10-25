@@ -49,7 +49,10 @@ export const listRooms = async (req: Request, res: Response) => {
     orderBy: [{ building: 'asc' }, { floor: 'asc' }, { number: 'asc' }],
     include: {
       stays: {
-        where: { status: { in: ['RESERVED', 'CHECKED_IN'] }, checkOutDate: { gte: today() } },
+        // Client en séjour : toujours affiché, même s'il a dépassé sa date de
+        // départ prévue (sinon une chambre « Occupée » apparaît sans client).
+        // Réservations : seulement celles dont le départ n'est pas passé.
+        where: { OR: [{ status: 'CHECKED_IN' }, { status: 'RESERVED', checkOutDate: { gte: today() } }] },
         orderBy: { checkInDate: 'asc' },
         take: 3,
         select: { id: true, guestName: true, status: true, checkInDate: true, checkOutDate: true, group: { select: { id: true, name: true } } },
