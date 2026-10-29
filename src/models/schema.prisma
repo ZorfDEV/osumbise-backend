@@ -154,6 +154,8 @@ model Product {
   tva             Decimal       @default(0) @db.Decimal(5, 2)
   unit            Unit          @default(UNIT)
   stockCurrent    Decimal       @default(0) @map("stock_current") @db.Decimal(10, 3)
+  // Seuil d'alerte : uniquement sur les produits du stock principal
+  // (ingrédients, articles simples) ; toujours 0 pour un plat composé
   stockMin        Decimal       @default(0) @map("stock_min") @db.Decimal(10, 3)
   image           String?
   isActive        Boolean       @default(true) @map("is_active")

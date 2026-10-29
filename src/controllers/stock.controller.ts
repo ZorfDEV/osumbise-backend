@@ -108,8 +108,11 @@ export const listAlerts = async (req: Request, res: Response) => {
   // un bar/restaurant, filtrer en mémoire après une lecture scopée reste
   // largement suffisant pour le MVP — à revoir avec du SQL brut seulement si
   // le catalogue devient très large.
+  // Les plats composés (avec recette) sont préparés à la commande, pas
+  // stockés : seuls les produits du stock principal (ingrédients, articles
+  // simples) déclenchent une alerte
   const products = await req.db.product.findMany({
-    where: { isActive: true },
+    where: { isActive: true, recipeItems: { none: {} } },
     include: { category: true },
   });
 

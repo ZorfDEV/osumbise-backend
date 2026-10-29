@@ -15,6 +15,13 @@ const serializeProduct = <T extends DiscountableProduct>(product: T) => ({
   discountActive: isTagActive(product),
 });
 
+// Plat composé (avec recette, ex. Spaghettis au thon) : préparé à la commande,
+// jamais stocké en portions — pas de stock propre ni de seuil d'alerte, ce
+// sont ses ingrédients qui portent le seuil
+const withComposition = <T extends DiscountableProduct & { _count: { recipeItems: number } }>(
+  { _count, ...product }: T
+) => ({ ...serializeProduct(product), isComposed: _count.recipeItems > 0 });
+
 export const listProducts = async (req: Request, res: Response) => {
   const { categoryId, isActive } = req.query;
 
@@ -23,11 +30,11 @@ export const listProducts = async (req: Request, res: Response) => {
       ...(categoryId ? { categoryId: categoryId as string } : {}),
       ...(isActive !== undefined ? { isActive: isActive === 'true' } : {}),
     },
-    include: { category: true },
+    include: { category: true, _count: { select: { recipeItems: true } } },
     orderBy: { name: 'asc' },
   });
 
-  res.status(200).json({ products: products.map(serializeProduct) });
+  res.status(200).json({ products: products.map(withComposition) });
 };
 
 export const getProduct = async (req: Request, res: Response) => {
@@ -45,7 +52,9 @@ export const getProduct = async (req: Request, res: Response) => {
     return res.status(404).json({ message: 'Produit introuvable' });
   }
 
-  res.status(200).json({ product: serializeProduct(product) });
+  res.status(200).json({
+    product: { ...serializeProduct(product), isComposed: product.recipeItems.length > 0 },
+  });
 };
 
 export const createProduct = async (req: Request, res: Response) => {
@@ -74,7 +83,10 @@ export const updateProduct = async (req: Request, res: Response) => {
   const { id } = req.params;
   const data = req.body as UpdateProductInput;
 
-  const existing = await req.db.product.findFirst({ where: { id } });
+  const existing = await req.db.product.findFirst({
+    where: { id },
+    include: { _count: { select: { recipeItems: true } } },
+  });
   if (!existing) {
     return res.status(404).json({ message: 'Produit introuvable' });
   }
@@ -86,9 +98,11 @@ export const updateProduct = async (req: Request, res: Response) => {
     }
   }
 
+  const isComposed = existing._count.recipeItems > 0;
   const product = await prisma.product.update({
     where: { id },
-    data,
+    // Un plat composé n'a pas de seuil d'alerte : il est porté par ses ingrédients
+    data: isComposed ? { ...data, stockMin: 0 } : data,
     include: { category: true },
   });
 

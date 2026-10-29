@@ -246,6 +246,8 @@ model Product {
   stockCurrent    Decimal       @default(0) @map("stock_current") @db.Decimal(10, 3)
   // RÉSERVE (magasin) : alimentée par les livraisons, déstockée vers la vente
   stockReserve    Decimal       @default(0) @map("stock_reserve") @db.Decimal(10, 3)
+  // Seuil d'alerte : uniquement sur les produits du stock principal
+  // (ingrédients, articles simples) ; toujours 0 pour un plat composé
   stockMin        Decimal       @default(0) @map("stock_min") @db.Decimal(10, 3)
   image           String?
   // Remise en pourcentage (0-100) appliquée sur sellingPrice, facultative.

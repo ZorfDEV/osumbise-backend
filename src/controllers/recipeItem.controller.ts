@@ -33,10 +33,15 @@ export const addRecipeItem = async (req: Request, res: Response) => {
     return res.status(409).json({ message: 'Cet ingrédient est déjà dans la recette' });
   }
 
-  const recipeItem = await prisma.recipeItem.create({
-    data: { productId, ingredientProductId, quantity },
-    include: { ingredientProduct: { select: { id: true, name: true, unit: true } } },
-  });
+  // Devenu plat composé (préparé à la commande) : son seuil d'alerte n'a plus
+  // de sens, ce sont ses ingrédients qui le portent
+  const [recipeItem] = await prisma.$transaction([
+    prisma.recipeItem.create({
+      data: { productId, ingredientProductId, quantity },
+      include: { ingredientProduct: { select: { id: true, name: true, unit: true } } },
+    }),
+    prisma.product.update({ where: { id: productId }, data: { stockMin: 0 } }),
+  ]);
 
   res.status(201).json({ recipeItem });
 };
