@@ -178,6 +178,9 @@ export const addOrderItem = async (req: Request, res: Response) => {
     () => req.db.product.findFirst({ where: { id: productId, isActive: true } }),
     'Produit introuvable ou inactif'
   );
+  if (!product.isSellable) {
+    return res.status(400).json({ message: 'Ce produit est un ingrédient : il n’est pas vendu en caisse' });
+  }
 
   await prisma.orderItem.create({
     data: {

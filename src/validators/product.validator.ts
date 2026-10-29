@@ -23,6 +23,8 @@ const productFields = z.object({
   type: z.enum(['VEGETARIEN', 'SANS_SUCRE', 'ALCOOLISE', 'MUSULMAN']).optional(),
   // Cuisine (plats) ou bar (boissons servies par le serveur)
   preparationArea: z.enum(['KITCHEN', 'BAR']).optional(),
+  // false : ingrédient, absent de la caisse (consommé via les recettes)
+  isSellable: z.boolean().optional(),
   // Optionnel : uniquement nécessaire quand l'utilisateur connecté est OWNER
   establishmentId: z.string().uuid().optional(),
 });

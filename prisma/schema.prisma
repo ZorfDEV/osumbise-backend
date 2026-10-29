@@ -259,6 +259,9 @@ model Product {
   type            ProductType?
   preparationArea PreparationArea @default(KITCHEN) @map("preparation_area")
   isActive        Boolean       @default(true) @map("is_active")
+  // Vendu en caisse ; false pour un ingrédient (huile, spaghettis...) qui
+  // n'est consommé que via les recettes : il garde son stock et son seuil
+  isSellable      Boolean       @default(true) @map("is_sellable")
 
   // Recette : si ce produit est composé d'autres produits (ex. Poulet braisé -> Riz, Huile...)
   recipeItems    RecipeItem[]    @relation("ComposedProduct")
