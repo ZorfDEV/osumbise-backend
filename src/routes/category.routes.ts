@@ -18,16 +18,16 @@ router.use(protect, scopeTenant);
 router.get('/', asyncHandler(listCategories));
 router.post(
   '/',
-  authorize('OWNER', 'ADMIN'),
+  authorize('OWNER', 'ADMIN', 'STOCK_KEEPER'),
   validate(createCategorySchema),
   asyncHandler(createCategory)
 );
 router.patch(
   '/:id',
-  authorize('OWNER', 'ADMIN'),
+  authorize('OWNER', 'ADMIN', 'STOCK_KEEPER'),
   validate(updateCategorySchema),
   asyncHandler(updateCategory)
 );
-router.delete('/:id', authorize('OWNER', 'ADMIN'), asyncHandler(deleteCategory));
+router.delete('/:id', authorize('OWNER', 'ADMIN', 'STOCK_KEEPER'), asyncHandler(deleteCategory));
 
 export default router;
