@@ -152,7 +152,9 @@ export const getCashSession = async (req: Request, res: Response) => {
   });
 
   // Hôtel : versements de séjours encaissés dans la session. Chaque séjour
-  // compte une fois, en nuitées × tarif, regroupé par catégorie de chambre
+  // compte une fois, en nuitées × tarif, regroupé par catégorie de chambre,
+  // plus sa taxe de séjour (nuitées × taxe par nuit, comme sur la facture),
+  // moins la part de sa remise qui porte sur l'hébergement
   const stayPayments = await prisma.stayPayment.findMany({
     where: { cashSessionId: id },
     select: {
@@ -163,6 +165,14 @@ export const getCashSession = async (req: Request, res: Response) => {
           id: true,
           status: true,
           nightlyRate: true,
+          taxPerNight: true,
+          discount: true,
+          discountRate: true,
+          charges: { select: { quantity: true, unitPrice: true } },
+          orders: {
+            where: { status: { in: ['PAYEE', 'FERMEE'] } },
+            select: { payments: { select: { method: true, amount: true } } },
+          },
           checkInDate: true,
           checkOutDate: true,
           room: { select: { category: true } },
@@ -177,14 +187,32 @@ export const getCashSession = async (req: Request, res: Response) => {
     // Réservation annulée (avance remboursée ou conservée) : aucune nuit vendue
     if (p.stay.status !== 'CANCELLED') stays.set(p.stay.id, p.stay);
   }
-  const roomLines = new Map<string, { category: string; nightlyRate: number; nights: number; amount: number }>();
+  const roomLines = new Map<
+    string,
+    { category: string; nightlyRate: number; nights: number; amount: number; tax: number; discount: number }
+  >();
   for (const st of stays.values()) {
     const rate = Number(st.nightlyRate);
     const nights = nightsBetween(st.checkInDate, billedCheckOut(st));
     const key = `${st.room.category}-${rate}`;
-    const line = roomLines.get(key) ?? { category: st.room.category, nightlyRate: rate, nights: 0, amount: 0 };
+    const line = roomLines.get(key) ?? { category: st.room.category, nightlyRate: rate, nights: 0, amount: 0, tax: 0, discount: 0 };
+    const lodging = nights * rate;
+    // Remise du séjour, même calcul que computeTotals : elle porte sur
+    // hébergement + consommations sur la chambre + prestations ; seule la
+    // part de l'hébergement est déduite ici (la taxe de séjour reste due)
+    const roomCharges = st.orders.reduce(
+      (sum, o) => sum + o.payments.filter((p) => p.method === 'ROOM').reduce((t, p) => t + Number(p.amount), 0),
+      0
+    );
+    const services = st.charges.reduce((sum, c) => sum + c.quantity * Number(c.unitPrice), 0);
+    const base = lodging + roomCharges + services;
+    const stayDiscount = st.discountRate !== null
+      ? Math.round((base * Number(st.discountRate)) / 100)
+      : Math.min(Number(st.discount), base);
     line.nights += nights;
-    line.amount += nights * rate;
+    line.amount += lodging;
+    line.tax += nights * Number(st.taxPerNight);
+    line.discount += base > 0 ? Math.round((stayDiscount * lodging) / base) : 0;
     roomLines.set(key, line);
   }
   const CATEGORY_ORDER = ['STANDARD', 'VIP', 'SUITE'];
