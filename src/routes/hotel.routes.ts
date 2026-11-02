@@ -19,6 +19,7 @@ import {
   updateTaxRatesSchema,
   createStayGroupSchema,
   groupPaymentSchema,
+  updateStayGroupSchema,
 } from '../validators/hotel.validator';
 import {
   addStayGroupPayment,
@@ -27,6 +28,7 @@ import {
   createStayGroup,
   getStayGroup,
   listStayGroups,
+  updateStayGroup,
 } from '../controllers/stayGroup.controller';
 import {
   addStayCharge,
@@ -109,6 +111,7 @@ router.post(
 router.get('/groups', authorize(...FRONT_DESK), asyncHandler(listStayGroups));
 router.post('/groups', authorize(...FRONT_DESK), validate(createStayGroupSchema), asyncHandler(createStayGroup));
 router.get('/groups/:id', authorize(...FRONT_DESK), asyncHandler(getStayGroup));
+router.patch('/groups/:id', authorize(...FRONT_DESK), validate(updateStayGroupSchema), asyncHandler(updateStayGroup));
 router.post('/groups/:id/check-in', authorize(...FRONT_DESK), asyncHandler(checkInStayGroup));
 router.post('/groups/:id/check-out', authorize(...FRONT_DESK), asyncHandler(checkOutStayGroup));
 router.post('/groups/:id/payments', authorize(...FRONT_DESK), validate(groupPaymentSchema), asyncHandler(addStayGroupPayment));

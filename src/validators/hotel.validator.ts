@@ -131,6 +131,18 @@ export const createStayGroupSchema = z
     path: ['rooms'],
   });
 
+// Modification d'un groupe : informations et dates de toutes ses chambres
+// encore actives (une date absente reste inchangée chambre par chambre)
+export const updateStayGroupSchema = z
+  .object({
+    name: z.string().trim().min(2, 'Le nom du groupe est requis').max(120).optional(),
+    contactPhone: z.string().trim().max(30).optional(),
+    notes: z.string().max(1000).optional(),
+    checkInDate: day.optional(),
+    checkOutDate: day.optional(),
+  })
+  .refine(datesInOrder, datesMessage);
+
 export const groupPaymentSchema = addStayPaymentSchema;
 
 // Annulation d'une réservation : que faire de l'avance déjà versée ?
@@ -181,6 +193,7 @@ export type CancelStayInput = z.infer<typeof cancelStaySchema>;
 export type MoveStayInput = z.infer<typeof moveStaySchema>;
 
 export type CreateStayGroupInput = z.infer<typeof createStayGroupSchema>;
+export type UpdateStayGroupInput = z.infer<typeof updateStayGroupSchema>;
 export type CreateRoomInput = z.infer<typeof createRoomSchema>;
 export type UpdateRoomInput = z.infer<typeof updateRoomSchema>;
 export type UpdateTaxRatesInput = z.infer<typeof updateTaxRatesSchema>;

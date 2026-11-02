@@ -6,7 +6,7 @@ import { assertInScope } from '../utils/assertInScope';
 import { assertUsableCashSession } from '../utils/cashSessionAccess';
 import { emitToEstablishment } from '../realtime/socket';
 import { assertCreditAllowed } from '../services/customerCredit.service';
-import { AddStayPaymentInput, CreateStayGroupInput } from '../validators/hotel.validator';
+import { AddStayPaymentInput, CreateStayGroupInput, UpdateStayGroupInput } from '../validators/hotel.validator';
 import {
   addDays,
   assertRoomFree,
@@ -165,6 +165,58 @@ export const createStayGroup = async (req: Request, res: Response) => {
 
   notify(establishmentId);
   res.status(201).json({ group: withGroupTotals(await loadGroup(req, group.id)) });
+};
+
+// PATCH /api/hotel/groups/:id — informations du groupe et dates de toutes ses
+// chambres encore actives. Mêmes règles que la modification d'un séjour :
+// une chambre arrivée garde sa date d'arrivée, seul son départ change. Tout
+// ou rien : si une chambre n'est pas libre sur la nouvelle période, aucune
+// n'est modifiée.
+export const updateStayGroup = async (req: Request, res: Response) => {
+  const group = await loadGroup(req, req.params.id);
+  const data = req.body as UpdateStayGroupInput;
+  const changesDates = !!data.checkInDate || !!data.checkOutDate;
+  const active = group.stays.filter((s) => s.status === 'RESERVED' || s.status === 'CHECKED_IN');
+  if (changesDates && active.length === 0) {
+    throw httpError('Aucune chambre du groupe n’est réservée ou en cours : les dates ne peuvent plus être modifiées', 409);
+  }
+
+  const newDates = new Map<string, { checkIn: Date; checkOut: Date }>();
+  if (changesDates) {
+    for (const stay of active) {
+      const label = `Chambre ${stay.room.number}`;
+      const checkIn = stay.status === 'RESERVED' && data.checkInDate ? toDay(data.checkInDate) : stay.checkInDate;
+      const checkOut = data.checkOutDate ? toDay(data.checkOutDate) : stay.checkOutDate;
+      if (checkIn.getTime() !== stay.checkInDate.getTime() && checkIn < today()) {
+        throw httpError('Impossible de réserver à une date passée : l’arrivée doit être aujourd’hui ou plus tard', 400);
+      }
+      if (data.checkOutDate && checkOut < today()) throw httpError('La date de départ ne peut pas être passée', 400);
+      if (checkOut <= checkIn) throw httpError(`${label} : la date de départ doit être après la date d’arrivée`, 400);
+      try {
+        await assertRoomFree(stay.roomId, checkIn, checkOut, stay.id);
+      } catch (err) {
+        throw httpError(`${label} : ${(err as Error).message}`, 409);
+      }
+      newDates.set(stay.id, { checkIn, checkOut });
+    }
+  }
+
+  await prisma.$transaction(async (tx) => {
+    await tx.stayGroup.update({
+      where: { id: group.id },
+      data: {
+        name: data.name,
+        contactPhone: data.contactPhone === undefined ? undefined : data.contactPhone || null,
+        notes: data.notes === undefined ? undefined : data.notes || null,
+      },
+    });
+    for (const [stayId, dates] of newDates) {
+      await tx.stay.update({ where: { id: stayId }, data: { checkInDate: dates.checkIn, checkOutDate: dates.checkOut } });
+    }
+  });
+
+  notify(group.establishmentId);
+  res.status(200).json({ group: withGroupTotals(await loadGroup(req, group.id)) });
 };
 
 // POST /api/hotel/groups/:id/check-in — arrivée de toutes les chambres réservées
