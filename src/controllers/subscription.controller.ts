@@ -2,8 +2,8 @@ import { Request, Response } from 'express';
 import { prisma } from '../config/prisma';
 import { SelectPlanInput } from '../validators/subscription.validator';
 import { InitiatePaymentInput } from '../validators/subscriptionPayment.validator';
-import { initiateCollection } from '../services/airtelMoney.service';
-import { syncPaymentWithAirtel } from '../services/subscriptionLifecycle.service';
+import { initiateCollection, checkCollectionStatus } from '../services/airtelMoney.service';
+import { applyPaymentResult } from '../services/subscriptionLifecycle.service';
 
 // GET /api/subscription — l'abonnement de l'organisation de l'utilisateur
 // connecté (réservé à OWNER via les routes)
@@ -135,7 +135,18 @@ export const getPaymentStatus = async (req: Request, res: Response) => {
   // ⚠️ Forme exacte de la réponse à confirmer une fois la doc Gabon en main.
   if (payment.status === 'PENDING' && payment.externalRef) {
     try {
-      payment = (await syncPaymentWithAirtel(payment.id, payment.externalRef)) ?? payment;
+      const statusData = (await checkCollectionStatus(payment.externalRef)) as {
+        data?: { transaction?: { status?: string } };
+        transaction?: { status?: string };
+      };
+      const txStatus = statusData?.data?.transaction?.status ?? statusData?.transaction?.status;
+
+      if (txStatus === 'TS') {
+        payment = await applyPaymentResult(payment.id, true, statusData);
+      } else if (txStatus === 'TF' || txStatus === 'TA') {
+        payment = await applyPaymentResult(payment.id, false, statusData);
+      }
+      // sinon : toujours en cours côté Airtel aussi, rien à changer ici
     } catch {
       // Best-effort : le webhook reste la source de vérité principale, une
       // erreur ici ne doit pas faire échouer la simple consultation du statut
