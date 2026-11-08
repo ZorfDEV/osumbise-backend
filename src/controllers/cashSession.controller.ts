@@ -146,7 +146,18 @@ export const getCashSession = async (req: Request, res: Response) => {
       total: true,
       table: { select: { label: true } },
       customer: { select: { name: true } },
-      items: { select: { quantity: true, product: { select: { id: true, name: true } }, sideProduct: { select: { name: true } } } },
+      // Prix et taxes figés à la commande : ligne « quantité × prix TTC » du rapport
+      items: {
+        select: {
+          quantity: true,
+          unitPrice: true,
+          taxRate: true,
+          cssRate: true,
+          priceIncludesTax: true,
+          product: { select: { id: true, name: true } },
+          sideProduct: { select: { name: true } },
+        },
+      },
       payments: { select: { method: true, amount: true } },
     },
   });
