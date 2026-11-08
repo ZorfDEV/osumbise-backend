@@ -6,8 +6,35 @@ import { assertInScope } from '../utils/assertInScope';
 import { CreateUserInput, UpdateUserInput, ResetPasswordInput } from '../validators/user.validator';
 import { checkUserLimit } from '../utils/planLimits';
 
+// Un ADMIN ne gère que les employés de son établissement (sauf accès
+// multi-établissements donné par le propriétaire), et jamais un autre
+// administrateur : sinon il pourrait réinitialiser le mot de passe d'un
+// ADMIN multi-établissements et se connecter à sa place.
+// Retourne l'établissement auquel limiter l'ADMIN, ou null si aucune limite.
+const adminEstablishmentLimit = async (req: Request): Promise<string | null> => {
+  if (req.user!.role !== 'ADMIN') return null;
+  const me = await prisma.user.findUnique({
+    where: { id: req.user!.id },
+    select: { multiEstablishment: true, establishmentId: true },
+  });
+  return me?.multiEstablishment ? null : me?.establishmentId ?? null;
+};
+
+const adminCannotManage = async (
+  req: Request,
+  target: { role: string; establishmentId: string | null }
+): Promise<string | null> => {
+  if (req.user!.role !== 'ADMIN') return null;
+  if (target.role === 'ADMIN') return 'Seul le propriétaire peut gérer un administrateur';
+  const limit = await adminEstablishmentLimit(req);
+  if (limit && target.establishmentId !== limit) return 'Utilisateur introuvable';
+  return null;
+};
+
 export const listUsers = async (req: Request, res: Response) => {
+  const limit = await adminEstablishmentLimit(req);
   const users = await req.db.user.findMany({
+    where: limit ? { establishmentId: limit } : undefined,
     select: {
       id: true,
       name: true,
@@ -84,6 +111,12 @@ export const updateUser = async (req: Request, res: Response) => {
   if (existing.role === 'OWNER') {
     return res.status(403).json({ message: 'Impossible de modifier le compte propriétaire ici' });
   }
+  const forbidden = await adminCannotManage(req, existing);
+  if (forbidden) return res.status(403).json({ message: forbidden });
+  const limit = await adminEstablishmentLimit(req);
+  if (limit && data.establishmentId && data.establishmentId !== limit) {
+    return res.status(403).json({ message: 'Impossible de déplacer un employé vers un autre établissement' });
+  }
 
   if (data.establishmentId) {
     await assertInScope(
@@ -143,6 +176,8 @@ export const resetUserPassword = async (req: Request, res: Response) => {
   if (existing.role === 'OWNER') {
     return res.status(403).json({ message: 'Impossible de modifier le compte propriétaire ici' });
   }
+  const forbidden = await adminCannotManage(req, existing);
+  if (forbidden) return res.status(403).json({ message: forbidden });
 
   const passwordHash = await bcrypt.hash(newPassword, 10);
   await prisma.user.update({ where: { id }, data: { passwordHash } });

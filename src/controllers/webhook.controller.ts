@@ -1,7 +1,7 @@
 import { Request, Response } from 'express';
 import crypto from 'crypto';
 import { prisma } from '../config/prisma';
-import { applyPaymentResult } from '../services/subscriptionLifecycle.service';
+import { applyPaymentResult, syncPaymentWithAirtel } from '../services/subscriptionLifecycle.service';
 
 // ✅ Format confirmé par la documentation Airtel Developer (Callback With/
 // Without Authentication) pour l'application "osumbise" :
@@ -20,9 +20,9 @@ import { applyPaymentResult } from '../services/subscriptionLifecycle.service';
 // corps, avec HmacSHA256 + la clé privée (AIRTEL_CALLBACK_PRIVATE_KEY,
 // visible dans les paramètres de l'application sur le portail développeur),
 // encodé en Base64. Tant que ce n'est pas confirmé par un vrai test sandbox,
-// on se contente de LOGGUER un avertissement en cas de désaccord plutôt que
-// de rejeter le webhook — un mauvais calcul de notre part ne doit pas
-// bloquer un vrai paiement. À durcir (rejeter réellement) une fois vérifié.
+// un hash invalide n'est pas rejeté : le statut est alors redemandé à
+// Airtel (syncPaymentWithAirtel), si bien qu'un mauvais calcul de notre part
+// ne bloque pas un vrai paiement.
 function verifySignature(rawBody: Buffer | undefined, receivedHash: unknown): boolean {
   const privateKey = process.env.AIRTEL_CALLBACK_PRIVATE_KEY;
   if (!privateKey || typeof receivedHash !== 'string' || !rawBody) return false;
@@ -50,16 +50,6 @@ export const handleAirtelMoneyWebhook = async (req: Request, res: Response) => {
     return res.status(400).json({ message: 'Référence de transaction manquante' });
   }
 
-  if (req.body?.hash) {
-    const isValid = verifySignature(req.rawBody, req.body.hash);
-    if (!isValid) {
-      console.warn(
-        `[airtel-webhook] Signature non vérifiée pour la transaction ${externalRef} — ` +
-          'à examiner avant de durcir la vérification (voir commentaire verifySignature).'
-      );
-    }
-  }
-
   const payment = await prisma.subscriptionPayment.findUnique({ where: { externalRef } });
 
   if (!payment || payment.status !== 'PENDING') {
@@ -68,7 +58,20 @@ export const handleAirtelMoneyWebhook = async (req: Request, res: Response) => {
     return res.status(200).json({ received: true });
   }
 
-  await applyPaymentResult(payment.id, isSuccess, req.body);
+  // Cette route est publique : sans signature valide, le corps n'est qu'un
+  // signal et le statut est redemandé à Airtel. Sinon n'importe qui pourrait
+  // activer un abonnement en envoyant un faux "TS".
+  if (verifySignature(req.rawBody, req.body?.hash)) {
+    await applyPaymentResult(payment.id, isSuccess, req.body);
+  } else {
+    try {
+      await syncPaymentWithAirtel(payment.id, externalRef);
+    } catch (err) {
+      // Paiement laissé PENDING : le sondage du frontend (getPaymentStatus)
+      // réessaiera la vérification
+      console.warn(`[airtel-webhook] Vérification du statut impossible pour ${externalRef}`, err);
+    }
+  }
 
   res.status(200).json({ received: true });
 };

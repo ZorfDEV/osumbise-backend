@@ -210,6 +210,37 @@ export const listStays = async (req: Request, res: Response) => {
   res.status(200).json({ stays });
 };
 
+// GET /api/hotel/unpaid — séjours terminés (client parti) avec un solde
+// impayé : affichés dans « À encaisser » pour ne pas oublier la dette.
+// Départs des 12 derniers mois.
+export const listUnpaidStays = async (req: Request, res: Response) => {
+  const since = addDays(today(), -365);
+  const stays = await req.db.stay.findMany({
+    where: { status: 'CHECKED_OUT', checkOutDate: { gte: since } },
+    orderBy: { checkOutDate: 'desc' },
+    include: stayDetailInclude,
+  });
+  const unpaid = stays
+    .map(withTotals)
+    .filter((s) => s.totals.balance >= 1)
+    .map((s) => ({
+      id: s.id,
+      number: s.number,
+      guestName: s.guestName,
+      guestPhone: s.guestPhone,
+      room: { number: s.room.number, building: s.room.building, category: s.room.category },
+      group: s.group,
+      customer: s.customer ? { id: s.customer.id, name: s.customer.name } : null,
+      checkInDate: s.checkInDate,
+      checkOutDate: s.checkOutDate,
+      checkedOutAt: s.checkedOutAt,
+      total: s.totals.total,
+      paid: s.totals.paid,
+      balance: s.totals.balance,
+    }));
+  res.status(200).json({ stays: unpaid });
+};
+
 export const getStay = async (req: Request, res: Response) => {
   const stay = await loadStay(req, req.params.id);
   res.status(200).json({ stay: withTotals(stay) });

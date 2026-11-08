@@ -1,6 +1,6 @@
 import { Server as HttpServer } from 'http';
 import { Server as SocketIOServer, Socket } from 'socket.io';
-import jwt from 'jsonwebtoken';
+import { loadActiveUser } from '../middlewares/auth.middleware';
 import cookie from 'cookie';
 import { Role } from '@prisma/client';
 import { prisma } from '../config/prisma';
@@ -33,14 +33,16 @@ export const initSocket = (httpServer: HttpServer) => {
     },
   });
 
-  io.use((socket, next) => {
+  io.use(async (socket, next) => {
     const token = extractToken(socket);
     if (!token) {
       return next(new Error('Non authentifié'));
     }
     try {
-      const decoded = jwt.verify(token, process.env.JWT_SECRET as string) as SocketUser;
-      socket.data.user = decoded;
+      // Même contrôle que `protect` : compte toujours actif, rôle à jour
+      const user = await loadActiveUser(token);
+      if (!user) return next(new Error('Session invalide'));
+      socket.data.user = user;
       next();
     } catch {
       next(new Error('Session invalide'));

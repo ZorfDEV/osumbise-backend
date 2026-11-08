@@ -51,6 +51,7 @@ import {
   searchHotelInvoices,
   setStayDiscount,
   listStays,
+  listUnpaidStays,
   listTaxRates,
   updateRoom,
   updateRoomStatus,
@@ -85,6 +86,8 @@ router.put('/tax-rates', authorize(...MANAGERS), validate(updateTaxRatesSchema),
 
 // --- Séjours ---
 router.get('/stays', authorize(...FRONT_DESK), asyncHandler(listStays));
+// Séjours terminés avec un solde impayé (« À encaisser »)
+router.get('/unpaid', authorize(...FRONT_DESK), asyncHandler(listUnpaidStays));
 // Clients en séjour dans tous les hôtels du propriétaire (« Sur la chambre » au POS)
 router.get('/in-house', authorize(...FRONT_DESK), asyncHandler(listInHouseGuests));
 // Recherche d'une facture de l'hôtel (H0012, nom du client ou du groupe)
