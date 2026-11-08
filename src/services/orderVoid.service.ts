@@ -16,19 +16,23 @@ const CLOSED_STATUSES: OrderStatus[] = ['PAYEE', 'FERMEE', 'ANNULEE'];
 
 const httpError = (message: string, status: number) => Object.assign(new Error(message), { status });
 
-type ItemWithRecipe = Prisma.OrderItemGetPayload<{ include: { product: { include: { recipeItems: true } } } }>;
+type ItemWithRecipe = Prisma.OrderItemGetPayload<{
+  include: { product: { include: { recipeItems: true } }; sideProduct: { include: { recipeItems: true } } };
+}>;
 
 // Consommation par produit de stock (recette, ou le produit lui-même)
 const consumptionOf = (lines: { item: ItemWithRecipe; quantity: number }[]) => {
   const map = new Map<string, number>();
   for (const { item, quantity } of lines) {
-    const { product } = item;
-    if (product.recipeItems.length > 0) {
-      for (const r of product.recipeItems) {
-        map.set(r.ingredientProductId, (map.get(r.ingredientProductId) ?? 0) + Number(r.quantity) * quantity);
+    // Plat et accompagnement choisi : même règle de consommation
+    for (const product of item.sideProduct ? [item.product, item.sideProduct] : [item.product]) {
+      if (product.recipeItems.length > 0) {
+        for (const r of product.recipeItems) {
+          map.set(r.ingredientProductId, (map.get(r.ingredientProductId) ?? 0) + Number(r.quantity) * quantity);
+        }
+      } else {
+        map.set(product.id, (map.get(product.id) ?? 0) + quantity);
       }
-    } else {
-      map.set(product.id, (map.get(product.id) ?? 0) + quantity);
     }
   }
   return map;
@@ -58,7 +62,11 @@ const recordPreparedLoss = async (
 const loadOrder = (orderId: string) =>
   prisma.order.findUniqueOrThrow({
     where: { id: orderId },
-    include: { items: { include: { product: { include: { recipeItems: true } } } } },
+    include: {
+      items: {
+        include: { product: { include: { recipeItems: true } }, sideProduct: { include: { recipeItems: true } } },
+      },
+    },
   });
 
 // Retirer tout ou partie d'une ligne

@@ -92,7 +92,7 @@ export const stayDetailInclude = {
       table: { select: { label: true } },
       // Restaurant / bar d'où vient la consommation (peut être un autre établissement)
       establishment: { select: { name: true } },
-      items: { select: { id: true, quantity: true, unitPrice: true, product: { select: { name: true } } } },
+      items: { select: { id: true, quantity: true, unitPrice: true, product: { select: { name: true } }, sideProduct: { select: { name: true } } } },
       payments: { select: { method: true, amount: true } },
     },
   },

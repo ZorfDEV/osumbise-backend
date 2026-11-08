@@ -3,7 +3,7 @@ import path from 'path';
 import { Request, Response } from 'express';
 import { prisma } from '../config/prisma';
 import { resolveEstablishmentId } from '../utils/resolveEstablishmentId';
-import { CreateProductInput, UpdateProductInput } from '../validators/product.validator';
+import { CreateProductInput, UpdateProductInput, UpdateProductSidesInput } from '../validators/product.validator';
 import { PRODUCT_IMAGES_DIR } from '../middlewares/upload.middleware';
 import { DiscountableProduct, getEffectivePrice, isTagActive } from '../utils/productPricing';
 
@@ -22,6 +22,40 @@ const withComposition = <T extends DiscountableProduct & { _count: { recipeItems
   { _count, ...product }: T
 ) => ({ ...serializeProduct(product), isComposed: _count.recipeItems > 0 });
 
+// Accompagnements encore actifs, triés par nom : [{ id, name }]
+const flattenSides = (sides: { sideProduct: { id: string; name: string; isActive: boolean } }[]) =>
+  sides
+    .map((s) => s.sideProduct)
+    .filter((s) => s.isActive)
+    .map(({ id, name }) => ({ id, name }))
+    .sort((a, b) => a.name.localeCompare(b.name, 'fr'));
+
+// PUT /api/products/:id/sides — accompagnements proposés avec un plat
+export const updateProductSides = async (req: Request, res: Response) => {
+  const { id } = req.params;
+  const { sideProductIds, sideRequired } = req.body as UpdateProductSidesInput;
+
+  const product = await req.db.product.findFirst({ where: { id } });
+  if (!product) return res.status(404).json({ message: 'Produit introuvable' });
+
+  const ids = [...new Set(sideProductIds)].filter((x) => x !== id);
+  // Les accompagnements doivent être des produits du même établissement
+  const found = await req.db.product.findMany({ where: { id: { in: ids } }, select: { id: true } });
+  if (found.length !== ids.length) return res.status(400).json({ message: 'Accompagnement introuvable' });
+
+  await prisma.$transaction([
+    prisma.productSide.deleteMany({ where: { productId: id } }),
+    prisma.productSide.createMany({ data: ids.map((sideProductId) => ({ productId: id, sideProductId })) }),
+    prisma.product.update({ where: { id }, data: { sideRequired: ids.length > 0 && sideRequired } }),
+  ]);
+
+  const sides = await prisma.productSide.findMany({
+    where: { productId: id },
+    include: { sideProduct: { select: { id: true, name: true, isActive: true } } },
+  });
+  res.status(200).json({ sides: flattenSides(sides), sideRequired: ids.length > 0 && sideRequired });
+};
+
 export const listProducts = async (req: Request, res: Response) => {
   const { categoryId, isActive } = req.query;
 
@@ -30,11 +64,18 @@ export const listProducts = async (req: Request, res: Response) => {
       ...(categoryId ? { categoryId: categoryId as string } : {}),
       ...(isActive !== undefined ? { isActive: isActive === 'true' } : {}),
     },
-    include: { category: true, _count: { select: { recipeItems: true } } },
+    include: {
+      category: true,
+      _count: { select: { recipeItems: true } },
+      // Accompagnements proposés au POS quand on choisit ce plat
+      sides: { include: { sideProduct: { select: { id: true, name: true, isActive: true } } } },
+    },
     orderBy: { name: 'asc' },
   });
 
-  res.status(200).json({ products: products.map(withComposition) });
+  res.status(200).json({
+    products: products.map(({ sides, ...p }) => ({ ...withComposition(p), sides: flattenSides(sides) })),
+  });
 };
 
 export const getProduct = async (req: Request, res: Response) => {
@@ -45,6 +86,7 @@ export const getProduct = async (req: Request, res: Response) => {
     include: {
       category: true,
       recipeItems: { include: { ingredientProduct: true } },
+      sides: { include: { sideProduct: { select: { id: true, name: true, isActive: true } } } },
     },
   });
 
@@ -52,8 +94,9 @@ export const getProduct = async (req: Request, res: Response) => {
     return res.status(404).json({ message: 'Produit introuvable' });
   }
 
+  const { sides, ...rest } = product;
   res.status(200).json({
-    product: { ...serializeProduct(product), isComposed: product.recipeItems.length > 0 },
+    product: { ...serializeProduct(rest), isComposed: product.recipeItems.length > 0, sides: flattenSides(sides) },
   });
 };
 

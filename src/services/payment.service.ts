@@ -27,7 +27,11 @@ export const payOrder = async (
 ) => {
   const order = await prisma.order.findUniqueOrThrow({
     where: { id: orderId },
-    include: { items: { include: { product: { include: { recipeItems: true } } } } },
+    include: {
+      items: {
+        include: { product: { include: { recipeItems: true } }, sideProduct: { include: { recipeItems: true } } },
+      },
+    },
   });
 
   if (order.items.length === 0) {
@@ -94,18 +98,21 @@ export const payOrder = async (
   // Produit "simple" (pas de recette déclarée) -> il se consomme lui-même 1-pour-1.
   const consumption = new Map<string, number>();
 
+  // L'accompagnement choisi (riz, banane…) se consomme comme un produit :
+  // sa recette s'il en a une, sinon lui-même, une portion par plat
   for (const item of order.items) {
-    const { product } = item;
-    if (product.recipeItems.length > 0) {
-      for (const recipeItem of product.recipeItems) {
-        const qty = Number(recipeItem.quantity) * item.quantity;
-        consumption.set(
-          recipeItem.ingredientProductId,
-          (consumption.get(recipeItem.ingredientProductId) ?? 0) + qty
-        );
+    for (const product of item.sideProduct ? [item.product, item.sideProduct] : [item.product]) {
+      if (product.recipeItems.length > 0) {
+        for (const recipeItem of product.recipeItems) {
+          const qty = Number(recipeItem.quantity) * item.quantity;
+          consumption.set(
+            recipeItem.ingredientProductId,
+            (consumption.get(recipeItem.ingredientProductId) ?? 0) + qty
+          );
+        }
+      } else {
+        consumption.set(product.id, (consumption.get(product.id) ?? 0) + item.quantity);
       }
-    } else {
-      consumption.set(product.id, (consumption.get(product.id) ?? 0) + item.quantity);
     }
   }
 

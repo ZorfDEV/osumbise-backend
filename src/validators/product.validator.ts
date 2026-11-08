@@ -44,5 +44,12 @@ export const updateProductSchema = productFields
   .extend({ isActive: z.boolean().optional() })
   .refine(validateTagPeriod, tagPeriodIssue);
 
+// Accompagnements proposés avec un plat (remplace la liste existante)
+export const updateProductSidesSchema = z.object({
+  sideProductIds: z.array(z.string().uuid()).max(30),
+  sideRequired: z.boolean(),
+});
+export type UpdateProductSidesInput = z.infer<typeof updateProductSidesSchema>;
+
 export type CreateProductInput = z.infer<typeof createProductSchema>;
 export type UpdateProductInput = z.infer<typeof updateProductSchema>;

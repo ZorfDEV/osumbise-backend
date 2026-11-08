@@ -17,6 +17,8 @@ export const addOrderItemSchema = z.object({
   productId: z.string().uuid(),
   quantity: z.number().int().positive(),
   note: z.string().optional(),
+  // Accompagnement choisi avec le plat (riz, banane…), inclus dans son prix
+  sideProductId: z.string().uuid().nullable().optional(),
 });
 
 export const updateOrderItemSchema = z.object({

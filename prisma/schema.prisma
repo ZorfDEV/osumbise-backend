@@ -262,18 +262,40 @@ model Product {
   // Vendu en caisse ; false pour un ingrédient (huile, spaghettis...) qui
   // n'est consommé que via les recettes : il garde son stock et son seuil
   isSellable      Boolean       @default(true) @map("is_sellable")
+  // Plat servi avec un accompagnement (riz, banane…) : le serveur doit en
+  // choisir un parmi `sides` ; sinon il est proposé mais facultatif
+  sideRequired    Boolean       @default(false) @map("side_required")
 
   // Recette : si ce produit est composé d'autres produits (ex. Poulet braisé -> Riz, Huile...)
   recipeItems    RecipeItem[]    @relation("ComposedProduct")
   // Dans quelles recettes ce produit est utilisé comme ingrédient
   usedInRecipes  RecipeItem[]    @relation("IngredientProduct")
-  orderItems     OrderItem[]
+  orderItems     OrderItem[]     @relation("OrderItemProduct")
+  // Accompagnements proposés avec ce plat, et plats où ce produit est proposé
+  // comme accompagnement
+  sides          ProductSide[]   @relation("DishSides")
+  sideOf         ProductSide[]   @relation("SideProduct")
+  // Lignes de commande où ce produit est l'accompagnement choisi
+  orderItemsAsSide OrderItem[]   @relation("OrderItemSide")
   stockMovements StockMovement[]
   purchaseItems  PurchaseItem[]
   createdAt      DateTime        @default(now()) @map("created_at")
   updatedAt      DateTime        @updatedAt @map("updated_at")
 
   @@map("products")
+}
+
+// Accompagnement proposé avec un plat (Poisson braisé -> Riz, Banane…) :
+// choisi à la commande, inclus dans le prix du plat (non facturé)
+model ProductSide {
+  id            String  @id @default(uuid())
+  productId     String  @map("product_id")
+  product       Product @relation("DishSides", fields: [productId], references: [id], onDelete: Cascade)
+  sideProductId String  @map("side_product_id")
+  sideProduct   Product @relation("SideProduct", fields: [sideProductId], references: [id], onDelete: Cascade)
+
+  @@unique([productId, sideProductId])
+  @@map("product_sides")
 }
 
 model RecipeItem {
@@ -411,7 +433,10 @@ model OrderItem {
   orderId   String  @map("order_id")
   order     Order   @relation(fields: [orderId], references: [id])
   productId String  @map("product_id")
-  product   Product @relation(fields: [productId], references: [id])
+  product   Product @relation("OrderItemProduct", fields: [productId], references: [id])
+  // Accompagnement choisi avec le plat (inclus dans son prix, décompté du stock)
+  sideProductId String?  @map("side_product_id")
+  sideProduct   Product? @relation("OrderItemSide", fields: [sideProductId], references: [id])
   quantity  Int
   unitPrice Decimal @map("unit_price") @db.Decimal(12, 2) // prix figé au moment de la vente
   // Taxe du produit (%) figée au moment de l'ajout, ajoutée au prix hors taxe

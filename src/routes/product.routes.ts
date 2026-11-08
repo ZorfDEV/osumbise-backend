@@ -3,7 +3,7 @@ import { protect, authorize } from '../middlewares/auth.middleware';
 import { scopeTenant } from '../middlewares/tenant.middleware';
 import { validate } from '../middlewares/validate.middleware';
 import { uploadProductImage as uploadProductImageMiddleware } from '../middlewares/upload.middleware';
-import { createProductSchema, updateProductSchema } from '../validators/product.validator';
+import { createProductSchema, updateProductSchema, updateProductSidesSchema } from '../validators/product.validator';
 import {
   listProducts,
   getProduct,
@@ -11,6 +11,7 @@ import {
   updateProduct,
   uploadProductImage,
   deleteProduct,
+  updateProductSides,
 } from '../controllers/product.controller';
 import { asyncHandler } from '../utils/jwt';
 import recipeItemRoutes from './recipeItem.routes';
@@ -38,6 +39,13 @@ router.post(
   authorize('OWNER', 'ADMIN', 'STOCK_KEEPER'),
   uploadProductImageMiddleware,
   asyncHandler(uploadProductImage)
+);
+// Accompagnements proposés avec un plat (riz, banane…)
+router.put(
+  '/:id/sides',
+  authorize('OWNER', 'ADMIN', 'STOCK_KEEPER'),
+  validate(updateProductSidesSchema),
+  asyncHandler(updateProductSides)
 );
 router.delete('/:id', authorize('OWNER', 'ADMIN', 'STOCK_KEEPER'), asyncHandler(deleteProduct));
 

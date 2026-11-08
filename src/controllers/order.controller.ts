@@ -53,7 +53,7 @@ export const listOrders = async (req: Request, res: Response) => {
     },
     include: {
       table: true,
-      items: { include: { product: true } },
+      items: { include: { product: true, sideProduct: { select: { id: true, name: true } } } },
       user: { select: { name: true } },
       customer: { select: { id: true, name: true, balance: true } },
     },
@@ -70,7 +70,7 @@ export const getOrder = async (req: Request, res: Response) => {
     where: { id },
     include: {
       table: true,
-      items: { include: { product: true } },
+      items: { include: { product: true, sideProduct: { select: { id: true, name: true } } } },
       payments: true,
       statusHistory: { orderBy: { changedAt: 'asc' } },
       user: { select: { name: true } },
@@ -163,7 +163,7 @@ export const createOrder = async (req: Request, res: Response) => {
 
 export const addOrderItem = async (req: Request, res: Response) => {
   const { id } = req.params;
-  const { productId, quantity, note } = req.body as AddOrderItemInput;
+  const { productId, quantity, note, sideProductId } = req.body as AddOrderItemInput;
 
   const order = await assertInScope(
     () => req.db.order.findFirst({ where: { id } }),
@@ -175,9 +175,16 @@ export const addOrderItem = async (req: Request, res: Response) => {
   }
 
   const product = await assertInScope(
-    () => req.db.product.findFirst({ where: { id: productId, isActive: true } }),
+    () => req.db.product.findFirst({ where: { id: productId, isActive: true }, include: { sides: true } }),
     'Produit introuvable ou inactif'
   );
+  // Accompagnement : uniquement parmi ceux proposés avec ce plat
+  if (sideProductId && !product.sides.some((s) => s.sideProductId === sideProductId)) {
+    return res.status(400).json({ message: 'Cet accompagnement n’est pas proposé avec ce plat' });
+  }
+  if (!sideProductId && product.sideRequired && product.sides.length > 0) {
+    return res.status(400).json({ message: `Choisissez l’accompagnement de « ${product.name} »` });
+  }
   if (!product.isSellable) {
     return res.status(400).json({ message: 'Ce produit est un ingrédient : il n’est pas vendu en caisse' });
   }
@@ -192,6 +199,7 @@ export const addOrderItem = async (req: Request, res: Response) => {
       taxRate: product.tva,
       cssRate: product.css,
       priceIncludesTax: product.priceIncludesTax,
+      sideProductId: sideProductId ?? null,
       note,
     },
   });
