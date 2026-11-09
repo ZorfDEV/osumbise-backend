@@ -411,10 +411,12 @@ export const listSales = async (req: Request, res: Response) => {
     end.setDate(end.getDate() + 1);
     createdAt.lt = end;
   }
+  // Caissier : uniquement les ventes encaissées dans SES sessions de caisse
+  const ownSessions = req.user!.role === 'CASHIER' ? { cashSession: { openedById: req.user!.id } } : {};
   const orders = await req.db.order.findMany({
     where: {
       status: { in: ['PAYEE', 'FERMEE', 'ANNULEE'] },
-      payments: { some: from || to ? { createdAt } : {} },
+      payments: { some: { ...(from || to ? { createdAt } : {}), ...ownSessions } },
     },
     orderBy: { updatedAt: 'desc' },
     take: 300,

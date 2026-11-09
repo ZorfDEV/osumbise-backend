@@ -43,7 +43,8 @@ const MANAGERS = ['OWNER', 'ADMIN'] as const;
 
 router.get('/', asyncHandler(listOrders));
 router.get('/voids', authorize(...MANAGERS), asyncHandler(listOrderVoids));
-router.get('/sales', authorize(...MANAGERS), asyncHandler(listSales));
+// Caissier : ses propres ventes seulement (filtré dans listSales)
+router.get('/sales', authorize(...MANAGERS, 'CASHIER'), asyncHandler(listSales));
 router.get('/search', authorize('OWNER', 'ADMIN', 'CASHIER', 'SERVER'), asyncHandler(searchOrders));
 router.get('/:id', asyncHandler(getOrder));
 
