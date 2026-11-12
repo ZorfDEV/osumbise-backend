@@ -144,6 +144,9 @@ export const getCashSession = async (req: Request, res: Response) => {
       number: true,
       status: true,
       total: true,
+      // Remise de la facture : TOTAL HT / TVA / CSS du rapport après remise
+      discount: true,
+      discountRate: true,
       table: { select: { label: true } },
       customer: { select: { name: true } },
       // Prix et taxes figés à la commande : ligne « quantité × prix TTC » du rapport
