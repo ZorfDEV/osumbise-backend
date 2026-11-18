@@ -210,19 +210,38 @@ export const recordTransfer = (input: {
 // Correction d'une entrée saisie avec une mauvaise quantité : un mouvement
 // CORRECTION rétablit l'écart sur le même stock ; motif obligatoire, une seule
 // correction par entrée (l'historique garde l'entrée d'origine).
+// Mouvements saisis à la main qui peuvent être corrigés (une seule fois)
+export const CORRECTABLE_TYPES: StockMovementType[] = ['ENTREE', 'PERTE', 'CASSE', 'AJUSTEMENT'];
+const CORRECTION_LABELS: Partial<Record<StockMovementType, string>> = {
+  ENTREE: "l'entrée",
+  PERTE: 'la perte',
+  CASSE: 'la casse',
+  AJUSTEMENT: "l'ajustement",
+};
+
+// Corrige un mouvement erroné par un mouvement CORRECTION qui en garde la
+// trace. `quantity` est la bonne valeur : quantité entrée, perdue ou cassée,
+// ou, pour un ajustement, le stock réellement compté ce jour-là. Le stock
+// actuel est décalé de l'écart entre l'effet saisi et l'effet corrigé.
 export const correctEntry = (input: { movementId: string; quantity: number; reason: string; userId?: string }) =>
   prisma.$transaction(async (tx) => {
     const original = await tx.stockMovement.findUniqueOrThrow({ where: { id: input.movementId } });
-    if (original.type !== 'ENTREE') {
-      throw Object.assign(new Error('Seule une entrée de stock peut être corrigée'), { status: 400 });
+    if (!CORRECTABLE_TYPES.includes(original.type)) {
+      throw Object.assign(new Error('Seuls une entrée, une perte, une casse ou un ajustement peuvent être corrigés'), { status: 400 });
     }
+    const label = CORRECTION_LABELS[original.type];
     const already = await tx.stockMovement.findFirst({ where: { correctsMovementId: original.id } });
     if (already) {
-      throw Object.assign(new Error('Cette entrée a déjà été corrigée : faites un ajustement d’inventaire si besoin'), { status: 409 });
+      throw Object.assign(new Error(`${label!.charAt(0).toUpperCase()}${label!.slice(1)} a déjà été corrigé(e) : faites un ajustement d’inventaire si besoin`), { status: 409 });
     }
-    const delta = input.quantity - Number(original.quantity);
+
+    // Valeur saisie à l'origine, dans la même unité que `quantity`
+    const before = original.type === 'AJUSTEMENT' ? Number(original.stockAfter) : Number(original.quantity);
+    // Entrée : plus de quantité = plus de stock ; perte/casse : l'inverse ;
+    // ajustement : le stock suit le nouveau comptage
+    const delta = original.type === 'PERTE' || original.type === 'CASSE' ? before - input.quantity : input.quantity - before;
     if (delta === 0) {
-      throw Object.assign(new Error('La quantité corrigée est identique à celle de l’entrée'), { status: 400 });
+      throw Object.assign(new Error('La quantité corrigée est identique à celle saisie'), { status: 400 });
     }
     const day = original.createdAt.toLocaleDateString('fr-FR');
     return applyDelta({
@@ -231,7 +250,7 @@ export const correctEntry = (input: { movementId: string; quantity: number; reas
       delta,
       type: 'CORRECTION',
       location: original.location,
-      reason: `Correction de l'entrée du ${day} : ${Number(original.quantity)} → ${input.quantity} — ${input.reason}`,
+      reason: `Correction de ${label} du ${day} : ${before} → ${input.quantity} — ${input.reason}`,
       userId: input.userId,
       correctsMovementId: original.id,
     });

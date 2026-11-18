@@ -69,7 +69,8 @@ export const createTransfer = async (req: Request, res: Response) => {
   res.status(201).json({ product });
 };
 
-// POST /api/stock/movements/:id/correct — corriger une entrée erronée
+// POST /api/stock/movements/:id/correct — corriger une entrée, une perte,
+// une casse ou un ajustement erronés
 export const correctMovement = async (req: Request, res: Response) => {
   const { quantity, reason } = req.body as CorrectionInput;
   await assertInScope(() => req.db.stockMovement.findFirst({ where: { id: req.params.id } }), 'Mouvement introuvable');
@@ -85,6 +86,8 @@ export const listMovements = async (req: Request, res: Response) => {
     include: {
       product: { select: { name: true, unit: true } },
       user: { select: { name: true } },
+      // Sortie de vente : facture d'origine (numéro et date pour l'affichage)
+      order: { select: { id: true, number: true, createdAt: true } },
     },
     orderBy: { createdAt: 'desc' },
     take: 100,
