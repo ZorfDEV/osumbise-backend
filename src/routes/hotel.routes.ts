@@ -6,6 +6,7 @@ import { asyncHandler } from '../utils/jwt';
 import { discountSchema } from '../validators/order.validator';
 import {
   addStayPaymentSchema,
+  changeStayPaymentMethodSchema,
   cancelStaySchema,
   moveStaySchema,
   hotelServiceSchema,
@@ -39,6 +40,7 @@ import {
 } from '../controllers/hotelService.controller';
 import {
   addStayPayment,
+  changeStayPaymentMethod,
   cancelStay,
   moveStay,
   checkIn,
@@ -107,6 +109,13 @@ router.post(
   authorize(...FRONT_DESK),
   validate(addStayPaymentSchema),
   asyncHandler(addStayPayment)
+);
+// Mauvais mode de paiement choisi à l'encaissement (session de caisse ouverte)
+router.patch(
+  '/stays/:id/payments/:paymentId',
+  authorize(...FRONT_DESK),
+  validate(changeStayPaymentMethodSchema),
+  asyncHandler(changeStayPaymentMethod)
 );
 
 

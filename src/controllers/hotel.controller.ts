@@ -10,6 +10,7 @@ import { DiscountInput } from '../validators/order.validator';
 import {
   AddStayPaymentInput,
   CancelStayInput,
+  ChangeStayPaymentMethodInput,
   CreateRoomInput,
   CreateStayInput,
   MoveStayInput,
@@ -633,6 +634,127 @@ export const addStayPayment = async (req: Request, res: Response) => {
   const stay = await loadStay(req, existing.id);
   notify(existing.establishmentId);
   res.status(201).json({ stay: withTotals(stay) });
+};
+
+const METHOD_LABELS: Record<AddStayPaymentInput['method'], string> = {
+  CASH: 'Espèces',
+  CARD: 'Carte',
+  MOBILE_MONEY: 'Mobile Money',
+  TRANSFER: 'Virement',
+  CREDIT: 'Compte client',
+};
+
+// PATCH /api/hotel/stays/:id/payments/:paymentId { method, customerId? } —
+// mauvais mode choisi à l'encaissement. Le montant ne change pas ; la caisse
+// (mouvement espèces/carte/mobile) et le compte client suivent le nouveau
+// mode. Impossible une fois la session de caisse du versement clôturée.
+// Un versement de groupe (réparti sur plusieurs chambres, un seul mouvement
+// de caisse) change de mode sur toutes ses chambres à la fois.
+export const changeStayPaymentMethod = async (req: Request, res: Response) => {
+  const existing = await loadStay(req, req.params.id);
+  const { method, customerId } = req.body as ChangeStayPaymentMethodInput;
+  const payment = existing.payments.find((p) => p.id === req.params.paymentId);
+  if (!payment) throw httpError('Versement introuvable', 404);
+  if (existing.status === 'CANCELLED') throw httpError('Séjour annulé : versement non modifiable', 409);
+  if (Number(payment.amount) <= 0) throw httpError('Un remboursement ne peut pas changer de mode', 409);
+  if (payment.method === 'ROOM') throw httpError('Ce versement ne peut pas changer de mode', 409);
+  const oldMethod = payment.method as AddStayPaymentInput['method'];
+  if (oldMethod === method && (method !== 'CREDIT' || !customerId || customerId === payment.customerId)) {
+    throw httpError('Le versement a déjà ce mode de paiement', 400);
+  }
+  if (payment.cashSessionId) await assertUsableCashSession(req, payment.cashSessionId);
+
+  // Versement de groupe : les parts créées ensemble sur les autres chambres
+  const near = (d: Date) => ({ gte: new Date(d.getTime() - 5000), lte: new Date(d.getTime() + 5000) });
+  const parts = existing.groupId
+    ? await prisma.stayPayment.findMany({
+        where: {
+          stay: { groupId: existing.groupId },
+          method: payment.method,
+          note: payment.note,
+          cashSessionId: payment.cashSessionId,
+          customerId: payment.customerId,
+          userId: payment.userId,
+          amount: { gt: 0 },
+          createdAt: near(payment.createdAt),
+        },
+      })
+    : [payment];
+  const total = Math.round(parts.reduce((sum, p) => sum + Number(p.amount), 0) * 100) / 100;
+
+  // Nouveau compte client (même établissement que le séjour)
+  const newCustomerId = method === 'CREDIT' ? customerId ?? existing.customerId : null;
+  if (method === 'CREDIT' && !newCustomerId) throw httpError('Choisissez le compte client à débiter', 400);
+  const newCustomer = newCustomerId
+    ? await assertInScope(() => req.db.customer.findFirst({ where: { id: newCustomerId } }), 'Client introuvable')
+    : null;
+
+  // Mouvement de caisse du versement d'origine (même session, même montant,
+  // créé dans la même transaction)
+  const oldMovementType = PAYMENT_TO_CASH_MOVEMENT[oldMethod];
+  const newMovementType = PAYMENT_TO_CASH_MOVEMENT[method];
+  const movement =
+    payment.cashSessionId && oldMovementType
+      ? await prisma.cashMovement.findFirst({
+          where: { cashSessionId: payment.cashSessionId, type: oldMovementType, amount: total, createdAt: near(payment.createdAt) },
+        })
+      : null;
+  if (payment.cashSessionId && oldMovementType && !movement) {
+    throw httpError('Mouvement de caisse du versement introuvable : faites la correction depuis la caisse', 409);
+  }
+
+  const me = await prisma.user.findUnique({ where: { id: req.user!.id }, select: { name: true } });
+  const mention = `Mode modifié : ${METHOD_LABELS[oldMethod]} → ${METHOD_LABELS[method]}${me ? ` par ${me.name}` : ''}`;
+
+  await prisma.$transaction(async (tx) => {
+    // Ancien compte client : la dette disparaît (refusé si elle a déjà été réglée)
+    if (oldMethod === 'CREDIT' && payment.customerId) {
+      const { count } = await tx.customer.updateMany({
+        where: { id: payment.customerId, balance: { gte: total } },
+        data: { balance: { decrement: total } },
+      });
+      if (count === 0) throw httpError('Le compte client a déjà été réglé : ce versement ne peut plus changer de mode', 409);
+    }
+    if (newCustomer) {
+      // Relu après le débit éventuel de l'ancien compte (même client possible)
+      const fresh = await tx.customer.findUniqueOrThrow({ where: { id: newCustomer.id } });
+      assertCreditAllowed(fresh, total);
+      await tx.customer.update({ where: { id: newCustomer.id }, data: { balance: { increment: total } } });
+    }
+
+    for (const p of parts) {
+      await tx.stayPayment.update({
+        where: { id: p.id },
+        data: {
+          method,
+          customerId: newCustomer?.id ?? null,
+          note: p.note ? `${p.note} · ${mention}` : mention,
+          // Monnaie rendue : n'a de sens qu'en espèces
+          ...(method !== 'CASH' ? { cashReceived: null, changeGiven: 0 } : {}),
+        },
+      });
+    }
+
+    if (movement && newMovementType) {
+      await tx.cashMovement.update({ where: { id: movement.id }, data: { type: newMovementType } });
+    } else if (movement) {
+      await tx.cashMovement.delete({ where: { id: movement.id } });
+    } else if (payment.cashSessionId && newMovementType) {
+      await tx.cashMovement.create({
+        data: {
+          cashSessionId: payment.cashSessionId,
+          type: newMovementType,
+          amount: total,
+          note: `Séjour chambre ${existing.room.number} — ${existing.guestName}`,
+          createdAt: payment.createdAt,
+        },
+      });
+    }
+  });
+
+  const stay = await loadStay(req, existing.id);
+  notify(existing.establishmentId);
+  res.status(200).json({ stay: withTotals(stay) });
 };
 
 // GET /api/hotel/in-house — clients en séjour dans TOUS les hôtels du

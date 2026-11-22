@@ -145,6 +145,13 @@ export const updateStayGroupSchema = z
 
 export const groupPaymentSchema = addStayPaymentSchema;
 
+// Changement du mode de paiement d'un versement (erreur à l'encaissement).
+// CREDIT : compte client à débiter (sinon celui du séjour)
+export const changeStayPaymentMethodSchema = z.object({
+  method: z.enum(['CASH', 'CARD', 'MOBILE_MONEY', 'TRANSFER', 'CREDIT']),
+  customerId: z.string().uuid().optional(),
+});
+
 // Annulation d'une réservation : que faire de l'avance déjà versée ?
 // REFUND = rendue au client (sortie de caisse), RETAIN = conservée (frais
 // d'annulation, comptée dans les rapports)
@@ -200,3 +207,4 @@ export type UpdateTaxRatesInput = z.infer<typeof updateTaxRatesSchema>;
 export type CreateStayInput = z.infer<typeof createStaySchema>;
 export type UpdateStayInput = z.infer<typeof updateStaySchema>;
 export type AddStayPaymentInput = z.infer<typeof addStayPaymentSchema>;
+export type ChangeStayPaymentMethodInput = z.infer<typeof changeStayPaymentMethodSchema>;

@@ -79,7 +79,12 @@ export const stayDetailInclude = {
   user: { select: { name: true } },
   payments: {
     orderBy: { createdAt: 'asc' },
-    include: { user: { select: { name: true } }, customer: { select: { id: true, name: true } } },
+    include: {
+      user: { select: { name: true } },
+      customer: { select: { id: true, name: true } },
+      // Session clôturée : le mode de paiement ne peut plus être changé
+      cashSession: { select: { closedAt: true } },
+    },
   },
   charges: { orderBy: { createdAt: 'asc' }, include: { user: { select: { name: true } } } },
   orders: {
