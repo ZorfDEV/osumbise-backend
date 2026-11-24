@@ -62,9 +62,9 @@ export const selectPlan = async (req: Request, res: Response) => {
 };
 
 // POST /api/subscription/pay — déclenche un paiement Mobile Money pour la
-// formule en cours. Le paiement reste PENDING jusqu'à confirmation par le
-// webhook (voir webhook.controller.ts) ; le frontend interroge
-// GET /api/subscription/pay/:paymentId en attendant.
+// formule en cours. Le paiement reste PENDING jusqu'à confirmation par Airtel
+// (getPaymentStatus) ou par l'administrateur de la plateforme ; le frontend
+// interroge GET /api/subscription/pay/:paymentId en attendant.
 export const initiatePayment = async (req: Request, res: Response) => {
   const { phone } = req.body as InitiatePaymentInput;
 
@@ -128,10 +128,8 @@ export const getPaymentStatus = async (req: Request, res: Response) => {
     return res.status(404).json({ message: 'Paiement introuvable' });
   }
 
-  // Filet de sécurité : si le webhook n'est pas encore arrivé (normal en
-  // développement local sans tunnel public type ngrok, ou en cas d'aléa
-  // réseau), on interroge directement Airtel plutôt que de rester bloqué en
-  // attente indéfiniment.
+  // On interroge directement Airtel : sa réponse à notre demande est fiable,
+  // contrairement au webhook que n'importe qui peut envoyer.
   // ⚠️ Forme exacte de la réponse à confirmer une fois la doc Gabon en main.
   if (payment.status === 'PENDING' && payment.externalRef) {
     try {
@@ -142,14 +140,14 @@ export const getPaymentStatus = async (req: Request, res: Response) => {
       const txStatus = statusData?.data?.transaction?.status ?? statusData?.transaction?.status;
 
       if (txStatus === 'TS') {
-        payment = await applyPaymentResult(payment.id, true, statusData);
+        ({ payment } = await applyPaymentResult(payment.id, true, statusData));
       } else if (txStatus === 'TF' || txStatus === 'TA') {
-        payment = await applyPaymentResult(payment.id, false, statusData);
+        ({ payment } = await applyPaymentResult(payment.id, false, statusData));
       }
       // sinon : toujours en cours côté Airtel aussi, rien à changer ici
     } catch {
-      // Best-effort : le webhook reste la source de vérité principale, une
-      // erreur ici ne doit pas faire échouer la simple consultation du statut
+      // Une erreur ici ne doit pas faire échouer la simple consultation du
+      // statut : le paiement reste en attente
     }
   }
 

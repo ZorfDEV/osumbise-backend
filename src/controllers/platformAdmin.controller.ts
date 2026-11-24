@@ -1,8 +1,10 @@
 import { Request, Response } from 'express';
 import { prisma } from '../config/prisma';
+import { applyPaymentResult } from '../services/subscriptionLifecycle.service';
 import {
   UpdateSubscriptionAdminInput,
   UpdateOwnerStatusInput,
+  ReviewPaymentInput,
 } from '../validators/platformAdmin.validator';
 
 // GET /api/platform-admin/organizations?search=...
@@ -143,4 +145,61 @@ export const getRevenueSummary = async (req: Request, res: Response) => {
     statusCounts: statusCounts.map((s) => ({ status: s.status, count: s._count._all })),
     byPlan: Array.from(byPlanMap.values()),
   });
+};
+
+// GET /api/platform-admin/payments/pending — paiements Mobile Money à vérifier
+// sur le compte marchand Airtel avant de les valider
+export const listPendingPayments = async (req: Request, res: Response) => {
+  const payments = await prisma.subscriptionPayment.findMany({
+    where: { status: 'PENDING' },
+    orderBy: { createdAt: 'desc' },
+    take: 100,
+    select: {
+      id: true,
+      amount: true,
+      phone: true,
+      status: true,
+      externalRef: true,
+      createdAt: true,
+      subscription: {
+        select: {
+          plan: { select: { name: true, price: true } },
+          organization: { select: { id: true, name: true } },
+        },
+      },
+    },
+  });
+
+  res.status(200).json({ payments });
+};
+
+// POST /api/platform-admin/payments/:id/review { approve } — décision manuelle,
+// tracée : validé, l'abonnement est activé pour un mois ; rejeté, rien ne change
+export const reviewPayment = async (req: Request, res: Response) => {
+  const { approve } = req.body as ReviewPaymentInput;
+
+  const existing = await prisma.subscriptionPayment.findUnique({
+    where: { id: req.params.id },
+    select: { id: true, amount: true, subscription: { select: { organizationId: true } } },
+  });
+  if (!existing) {
+    return res.status(404).json({ message: 'Paiement introuvable' });
+  }
+
+  const { payment, applied } = await applyPaymentResult(existing.id, approve);
+  if (!applied) {
+    return res.status(409).json({ message: 'Ce paiement a déjà été traité' });
+  }
+
+  await prisma.auditLog.create({
+    data: {
+      organizationId: existing.subscription.organizationId,
+      userId: req.user!.id,
+      action: `Paiement d'abonnement de ${Number(existing.amount)} FCFA ${approve ? 'validé' : 'rejeté'} manuellement`,
+      entityType: 'SubscriptionPayment',
+      entityId: existing.id,
+    },
+  });
+
+  res.status(200).json({ payment: { id: payment.id, status: payment.status } });
 };

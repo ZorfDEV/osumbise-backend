@@ -10,5 +10,10 @@ export const updateOwnerStatusSchema = z.object({
   isActive: z.boolean(),
 });
 
+export const reviewPaymentSchema = z.object({
+  approve: z.boolean(),
+});
+
+export type ReviewPaymentInput = z.infer<typeof reviewPaymentSchema>;
 export type UpdateSubscriptionAdminInput = z.infer<typeof updateSubscriptionAdminSchema>;
 export type UpdateOwnerStatusInput = z.infer<typeof updateOwnerStatusSchema>;

@@ -2,31 +2,34 @@ import { prisma } from '../config/prisma';
 
 // Applique le résultat d'un paiement (succès ou échec) : met à jour le
 // paiement, et en cas de succès, active/prolonge l'abonnement d'un mois.
-// Partagé entre le webhook (notification poussée par Airtel) et le sondage
-// actif de secours (utile notamment en développement local, où Airtel ne
-// peut pas nous notifier directement sur localhost — voir getPaymentStatus).
+// Appelé quand Airtel répond à notre propre demande (getPaymentStatus) ou
+// quand l'administrateur de la plateforme tranche. Un paiement n'est traité
+// qu'une fois : sans effet s'il n'est plus PENDING (applied: false).
 export async function applyPaymentResult(
   paymentId: string,
   isSuccess: boolean,
-  rawResponse: unknown
+  rawResponse?: unknown
 ) {
-  const payment = await prisma.subscriptionPayment.update({
-    where: { id: paymentId },
-    data: {
-      status: isSuccess ? 'SUCCESS' : 'FAILED',
-      providerResponse: rawResponse as object,
-    },
-  });
-
-  if (isSuccess) {
-    const periodEnd = new Date();
-    periodEnd.setMonth(periodEnd.getMonth() + 1);
-
-    await prisma.subscription.update({
-      where: { id: payment.subscriptionId },
-      data: { status: 'ACTIVE', currentPeriodEnd: periodEnd },
+  return prisma.$transaction(async (tx) => {
+    const { count } = await tx.subscriptionPayment.updateMany({
+      where: { id: paymentId, status: 'PENDING' },
+      data: {
+        status: isSuccess ? 'SUCCESS' : 'FAILED',
+        ...(rawResponse === undefined ? {} : { providerResponse: rawResponse as object }),
+      },
     });
-  }
+    const payment = await tx.subscriptionPayment.findUniqueOrThrow({ where: { id: paymentId } });
 
-  return payment;
+    if (isSuccess && count > 0) {
+      const periodEnd = new Date();
+      periodEnd.setMonth(periodEnd.getMonth() + 1);
+
+      await tx.subscription.update({
+        where: { id: payment.subscriptionId },
+        data: { status: 'ACTIVE', currentPeriodEnd: periodEnd },
+      });
+    }
+
+    return { payment, applied: count > 0 };
+  });
 }
