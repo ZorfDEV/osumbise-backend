@@ -1,6 +1,10 @@
 import { Request, Response, NextFunction } from 'express';
 import { prisma } from '../config/prisma';
 import { getScopedPrisma } from '../utils/scopedPrisma';
+import { getSubscriptionAccess } from '../utils/subscriptionAccess';
+
+// Requêtes de consultation, toujours permises
+const READ_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
 
 // Établissement "actif" choisi par un OWNER dans l'interface :
 // - en-tête X-Establishment-Id pour les appels API ;
@@ -24,6 +28,18 @@ export const scopeTenant = async (req: Request, res: Response, next: NextFunctio
   }
 
   try {
+    // Abonnement expiré depuis plus que le délai de grâce : lecture seule. Le
+    // compte (/auth) et le paiement (/subscription) ne passent pas par ici.
+    if (!READ_METHODS.has(req.method)) {
+      const access = await getSubscriptionAccess(req.user.organizationId);
+      if (access.state === 'READ_ONLY') {
+        return res.status(402).json({
+          code: 'SUBSCRIPTION_READ_ONLY',
+          message: 'Abonnement expiré : l’application est en lecture seule jusqu’au renouvellement',
+        });
+      }
+    }
+
     const requested = requestedEstablishment(req);
     // Un OWNER sans établissement fixe peut choisir, ainsi qu'un ADMIN à qui le
     // propriétaire a donné accès à tous ses établissements ; pour les autres,

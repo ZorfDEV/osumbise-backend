@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import bcrypt from 'bcryptjs';
 import { prisma } from '../config/prisma';
 import { signToken, COOKIE_MAX_AGE } from '../utils/jwt';
+import { getSubscriptionAccess } from '../utils/subscriptionAccess';
 import { RegisterInput, LoginInput, UpdateProfileInput, ChangePasswordInput } from '../validators/auth.validator';
 
 const cookieOptions = {
@@ -160,6 +161,7 @@ export const login = async (req: Request, res: Response) => {
       establishmentType,
       organization: user.organization,
       hasSubscription: !!subscription,
+      subscriptionAccess: await getSubscriptionAccess(user.organizationId),
       isPlatformAdmin: user.isPlatformAdmin,
       multiEstablishment: user.multiEstablishment,
     },
@@ -215,7 +217,9 @@ export const me = async (req: Request, res: Response) => {
     user.organizationId
   );
 
-  res.status(200).json({ user: { ...user, hasSubscription: !!subscription, establishmentType } });
+  const subscriptionAccess = await getSubscriptionAccess(user.organizationId);
+
+  res.status(200).json({ user: { ...user, hasSubscription: !!subscription, subscriptionAccess, establishmentType } });
 };
 
 // PATCH /api/auth/me — mise à jour du profil par l'utilisateur lui-même
