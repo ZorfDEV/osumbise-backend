@@ -72,9 +72,9 @@ export const createTransfer = async (req: Request, res: Response) => {
 // POST /api/stock/movements/:id/correct — corriger une entrée, une perte,
 // une casse ou un ajustement erronés
 export const correctMovement = async (req: Request, res: Response) => {
-  const { quantity, reason } = req.body as CorrectionInput;
+  const { quantity, location, reason } = req.body as CorrectionInput;
   await assertInScope(() => req.db.stockMovement.findFirst({ where: { id: req.params.id } }), 'Mouvement introuvable');
-  const product = await stockService.correctEntry({ movementId: req.params.id, quantity, reason, userId: req.user!.id });
+  const product = await stockService.correctEntry({ movementId: req.params.id, quantity, location, reason, userId: req.user!.id });
   res.status(201).json({ product });
 };
 

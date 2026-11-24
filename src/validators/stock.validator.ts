@@ -34,9 +34,11 @@ export const transferSchema = z.object({
   reason: z.string().optional(),
 });
 
-// Correction d'une entrée : nouvelle quantité + justification obligatoire
+// Correction d'un mouvement : bonne valeur + justification obligatoire
 export const correctionSchema = z.object({
   quantity: z.number().nonnegative(),
+  // Entrée seulement : bon stock (réserve ou vente) si elle a été mal rangée
+  location: location.optional(),
   reason: z.string().trim().min(3, 'Indiquez la justification'),
 });
 
