@@ -1,4 +1,5 @@
 import { Prisma } from '@prisma/client';
+import { localDay } from './dateRange';
 
 export interface DiscountableProduct {
   sellingPrice: Prisma.Decimal;
@@ -8,16 +9,15 @@ export interface DiscountableProduct {
 }
 
 // Sans tagStartsAt/tagEndsAt, la remise s'applique tant que tag est renseigné.
-// tagEndsAt est une date (sans heure) : la remise reste active jusqu'à la fin
-// de cette journée, pas jusqu'à minuit pile.
+// Les deux dates sont des jours (sans heure) : la remise court de minuit le
+// premier jour à minuit après le dernier, à l'heure de Libreville.
 export const isTagActive = (product: DiscountableProduct, now: Date = new Date()): boolean => {
   if (product.tag === null) return false;
-  if (product.tagStartsAt && now < product.tagStartsAt) return false;
-  if (product.tagEndsAt) {
-    const endOfDay = new Date(product.tagEndsAt);
-    endOfDay.setUTCHours(23, 59, 59, 999);
-    if (now > endOfDay) return false;
-  }
+  const day = localDay(now);
+  // Colonne de type date : le jour saisi est la partie date en UTC
+  const dateOnly = (d: Date) => d.toISOString().slice(0, 10);
+  if (product.tagStartsAt && day < dateOnly(product.tagStartsAt)) return false;
+  if (product.tagEndsAt && day > dateOnly(product.tagEndsAt)) return false;
   return true;
 };
 

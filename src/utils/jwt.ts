@@ -7,6 +7,7 @@ interface TokenPayload {
   organizationId: string;
   establishmentId: string | null;
   role: Role;
+  tokenVersion: number;
 }
 
 export const signToken = (payload: TokenPayload): string => {

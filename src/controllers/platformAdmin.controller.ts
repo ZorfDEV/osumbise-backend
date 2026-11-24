@@ -1,6 +1,8 @@
 import { Request, Response } from 'express';
 import { prisma } from '../config/prisma';
 import { applyPaymentResult } from '../services/subscriptionLifecycle.service';
+import { disconnectUser } from '../realtime/socket';
+import { localDay } from '../utils/dateRange';
 import {
   UpdateSubscriptionAdminInput,
   UpdateOwnerStatusInput,
@@ -71,7 +73,7 @@ export const updateSubscriptionAdmin = async (req: Request, res: Response) => {
   const { id } = req.params; // id d'organisation
   const { status, planId, currentPeriodEnd } = req.body as UpdateSubscriptionAdminInput;
 
-  const existing = await prisma.subscription.findUnique({ where: { organizationId: id } });
+  const existing = await prisma.subscription.findUnique({ where: { organizationId: id }, include: { plan: true } });
   if (!existing) {
     return res.status(404).json({ message: 'Aucun abonnement pour cette organisation' });
   }
@@ -87,6 +89,25 @@ export const updateSubscriptionAdmin = async (req: Request, res: Response) => {
     include: { plan: true },
   });
 
+  // Historique : seulement ce qui a changé
+  const changes = [
+    existing.status !== subscription.status && `statut ${existing.status} → ${subscription.status}`,
+    existing.planId !== subscription.planId && `formule ${existing.plan.name} → ${subscription.plan.name}`,
+    existing.currentPeriodEnd.getTime() !== subscription.currentPeriodEnd.getTime() &&
+      `fin de période ${localDay(existing.currentPeriodEnd)} → ${localDay(subscription.currentPeriodEnd)}`,
+  ].filter(Boolean);
+  if (changes.length > 0) {
+    await prisma.auditLog.create({
+      data: {
+        organizationId: id,
+        userId: req.user!.id,
+        action: `Abonnement modifié par l'administrateur de la plateforme : ${changes.join(', ')}`,
+        entityType: 'Subscription',
+        entityId: subscription.id,
+      },
+    });
+  }
+
   res.status(200).json({ subscription });
 };
 
@@ -101,11 +122,22 @@ export const updateOwnerStatus = async (req: Request, res: Response) => {
     where: { organizationId: id, role: 'OWNER' },
     data: { isActive },
   });
+  await prisma.auditLog.create({
+    data: {
+      organizationId: id,
+      userId: req.user!.id,
+      action: `Propriétaire ${isActive ? 'réactivé' : 'suspendu'} par l'administrateur de la plateforme`,
+      entityType: 'Organization',
+      entityId: id,
+    },
+  });
 
   const users = await prisma.user.findMany({
     where: { organizationId: id, role: 'OWNER' },
     select: { id: true, name: true, email: true, isActive: true },
   });
+  // Connexions temps réel déjà ouvertes coupées aussi
+  if (!isActive) users.forEach((u) => disconnectUser(u.id));
 
   res.status(200).json({ users });
 };

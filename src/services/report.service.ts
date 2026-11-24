@@ -234,9 +234,14 @@ export const getReportData = async (
   };
 };
 
+// Texte commençant comme une formule (=, +, -, @) : précédé d'une apostrophe, sinon
+// Excel l'exécuterait à l'ouverture. Les nombres, même négatifs, restent tels quels.
+const isFormula = (str: string) => /^[=+\-@\t\r]/.test(str) && !/^-?\d+([.,]\d+)?$/.test(str);
+
 const toCsvValue = (value: unknown): string => {
-  const str = String(value ?? '');
-  return /[",\n]/.test(str) ? `"${str.replace(/"/g, '""')}"` : str;
+  const raw = String(value ?? '');
+  const str = isFormula(raw) ? `'${raw}` : raw;
+  return /[",\n\r]/.test(str) ? `"${str.replace(/"/g, '""')}"` : str;
 };
 
 const toCsvRow = (values: unknown[]): string => values.map(toCsvValue).join(',') + '\n';

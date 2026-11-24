@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import bcrypt from 'bcryptjs';
 import { prisma } from '../config/prisma';
 import { signToken, COOKIE_MAX_AGE } from '../utils/jwt';
+import { disconnectUser } from '../realtime/socket';
 import { getSubscriptionAccess } from '../utils/subscriptionAccess';
 import { RegisterInput, LoginInput, UpdateProfileInput, ChangePasswordInput } from '../validators/auth.validator';
 
@@ -86,6 +87,7 @@ export const register = async (req: Request, res: Response) => {
     organizationId: user.organizationId,
     establishmentId: user.establishmentId,
     role: user.role,
+    tokenVersion: user.tokenVersion,
   });
 
   res.cookie('token', token, cookieOptions);
@@ -135,6 +137,7 @@ export const login = async (req: Request, res: Response) => {
     organizationId: user.organizationId,
     establishmentId: user.establishmentId,
     role: user.role,
+    tokenVersion: user.tokenVersion,
   });
 
   res.cookie('token', token, cookieOptions);
@@ -224,7 +227,16 @@ export const me = async (req: Request, res: Response) => {
 
 // PATCH /api/auth/me — mise à jour du profil par l'utilisateur lui-même
 export const updateProfile = async (req: Request, res: Response) => {
-  const { name, email } = req.body as UpdateProfileInput;
+  const { name, email, currentPassword } = req.body as UpdateProfileInput;
+
+  // L'e-mail sert à se connecter : le changer demande le mot de passe, pour
+  // qu'une session laissée ouverte ne suffise pas à prendre le compte
+  const current = await prisma.user.findUniqueOrThrow({ where: { id: req.user!.id } });
+  if (email && email !== current.email) {
+    if (!currentPassword || !(await bcrypt.compare(currentPassword, current.passwordHash))) {
+      return res.status(400).json({ message: 'Mot de passe actuel requis pour changer l’e-mail' });
+    }
+  }
 
   if (email) {
     const existing = await prisma.user.findUnique({ where: { email } });
@@ -259,11 +271,28 @@ export const changePassword = async (req: Request, res: Response) => {
 
   const isValid = await bcrypt.compare(currentPassword, user.passwordHash);
   if (!isValid) {
-    return res.status(401).json({ message: 'Mot de passe actuel incorrect' });
+    // 400 et non 401 : la session est valide, c'est la saisie qui ne l'est pas
+    return res.status(400).json({ message: 'Mot de passe actuel incorrect' });
   }
 
   const passwordHash = await bcrypt.hash(newPassword, 10);
-  await prisma.user.update({ where: { id: req.user!.id }, data: { passwordHash } });
+  // Ferme toutes les autres sessions ; celle-ci reçoit un nouveau jeton
+  const updated = await prisma.user.update({
+    where: { id: req.user!.id },
+    data: { passwordHash, tokenVersion: { increment: 1 } },
+  });
+  res.cookie(
+    'token',
+    signToken({
+      id: updated.id,
+      organizationId: updated.organizationId,
+      establishmentId: updated.establishmentId,
+      role: updated.role,
+      tokenVersion: updated.tokenVersion,
+    }),
+    cookieOptions
+  );
+  disconnectUser(updated.id);
 
   res.status(200).json({ message: 'Mot de passe mis à jour' });
 };

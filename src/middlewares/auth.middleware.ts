@@ -14,18 +14,20 @@ interface JwtPayload {
 // suite, et un changement de rôle ou d'établissement s'applique sans attendre
 // l'expiration du jeton (24 h). Partagé avec l'authentification Socket.IO.
 export const loadActiveUser = async (token: string): Promise<JwtPayload | null> => {
-  let decoded: JwtPayload;
+  let decoded: JwtPayload & { tokenVersion?: number };
   try {
-    decoded = jwt.verify(token, process.env.JWT_SECRET as string) as JwtPayload;
+    decoded = jwt.verify(token, process.env.JWT_SECRET as string) as JwtPayload & { tokenVersion?: number };
   } catch {
     return null;
   }
 
   const user = await prisma.user.findUnique({
     where: { id: decoded.id },
-    select: { id: true, organizationId: true, establishmentId: true, role: true, isActive: true },
+    select: { id: true, organizationId: true, establishmentId: true, role: true, isActive: true, tokenVersion: true },
   });
   if (!user || !user.isActive) return null;
+  // Mot de passe changé depuis l'émission du jeton (jetons d'avant : version 0)
+  if ((decoded.tokenVersion ?? 0) !== user.tokenVersion) return null;
 
   return {
     id: user.id,

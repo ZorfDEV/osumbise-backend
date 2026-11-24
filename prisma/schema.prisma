@@ -161,6 +161,9 @@ model User {
   passwordHash       String          @map("password_hash")
   role               Role
   isActive           Boolean         @default(true) @map("is_active")
+  // Augmenté à chaque changement de mot de passe : les sessions ouvertes avec
+  // l'ancien (jetons portant l'ancienne valeur) sont refusées
+  tokenVersion       Int             @default(0) @map("token_version")
   // Administrateur ayant accès à tous les établissements du propriétaire
   // (même sélecteur que le propriétaire, mêmes droits d'administrateur partout)
   multiEstablishment Boolean @default(false) @map("multi_establishment")

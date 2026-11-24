@@ -19,6 +19,8 @@ export const loginSchema = z.object({
 export const updateProfileSchema = z.object({
   name: z.string().min(2, 'Le nom doit contenir au moins 2 caractères').optional(),
   email: z.string().email('Email invalide').optional(),
+  // Exigé seulement si l'e-mail change
+  currentPassword: z.string().optional(),
 });
 
 export const changePasswordSchema = z.object({

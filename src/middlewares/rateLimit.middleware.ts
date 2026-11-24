@@ -55,3 +55,14 @@ export const registerLimiter = limiter('inscription', {
   keyGenerator: clientIp,
   message: 'Trop d’inscriptions depuis cette connexion. Réessayez dans une heure.',
 });
+
+// Mot de passe actuel redemandé (changement de mot de passe ou d'e-mail) : une
+// session volée ne doit pas permettre de l'essayer sans fin. À monter après
+// `protect`.
+export const passwordCheckLimiter = limiter('mot de passe actuel', {
+  windowMs: QUARTER_HOUR,
+  limit: 10,
+  skipSuccessfulRequests: true,
+  keyGenerator: (req) => req.user!.id,
+  message: 'Trop de tentatives. Réessayez dans 15 minutes.',
+});

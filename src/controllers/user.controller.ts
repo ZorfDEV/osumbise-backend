@@ -21,10 +21,13 @@ const adminEstablishmentLimit = async (req: Request): Promise<string | null> => 
   return me?.multiEstablishment ? null : me?.establishmentId ?? null;
 };
 
-const adminCannotManage = async (
+const cannotManage = async (
   req: Request,
-  target: { role: string; establishmentId: string | null }
+  target: { role: string; establishmentId: string | null; isPlatformAdmin: boolean }
 ): Promise<string | null> => {
+  // Compte donnant accès à TOUTES les organisations : même le propriétaire de la
+  // sienne ne peut ni le modifier ni réinitialiser son mot de passe
+  if (target.isPlatformAdmin) return 'Ce compte administre la plateforme : il ne peut pas être modifié ici';
   if (req.user!.role !== 'ADMIN') return null;
   if (target.role === 'ADMIN') return 'Seul le propriétaire peut gérer un administrateur';
   const limit = await adminEstablishmentLimit(req);
@@ -44,6 +47,7 @@ export const listUsers = async (req: Request, res: Response) => {
       establishmentId: true,
       isActive: true,
       multiEstablishment: true,
+      isPlatformAdmin: true,
       createdAt: true,
       establishment: { select: { name: true } },
     },
@@ -112,7 +116,7 @@ export const updateUser = async (req: Request, res: Response) => {
   if (existing.role === 'OWNER') {
     return res.status(403).json({ message: 'Impossible de modifier le compte propriétaire ici' });
   }
-  const forbidden = await adminCannotManage(req, existing);
+  const forbidden = await cannotManage(req, existing);
   if (forbidden) return res.status(403).json({ message: forbidden });
   const limit = await adminEstablishmentLimit(req);
   if (limit && data.establishmentId && data.establishmentId !== limit) {
@@ -180,11 +184,13 @@ export const resetUserPassword = async (req: Request, res: Response) => {
   if (existing.role === 'OWNER') {
     return res.status(403).json({ message: 'Impossible de modifier le compte propriétaire ici' });
   }
-  const forbidden = await adminCannotManage(req, existing);
+  const forbidden = await cannotManage(req, existing);
   if (forbidden) return res.status(403).json({ message: forbidden });
 
   const passwordHash = await bcrypt.hash(newPassword, 10);
-  await prisma.user.update({ where: { id }, data: { passwordHash } });
+  // Les sessions ouvertes avec l'ancien mot de passe sont fermées
+  await prisma.user.update({ where: { id }, data: { passwordHash, tokenVersion: { increment: 1 } } });
+  disconnectUser(id);
 
   res.status(200).json({ message: 'Mot de passe réinitialisé' });
 };
