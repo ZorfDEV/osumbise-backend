@@ -31,7 +31,8 @@ model Plan {
   maxEstablishments Int            @map("max_establishments")
   maxUsers          Int            @map("max_users")
   features          String[]       @default([])
-  subscriptions     Subscription[]
+  subscriptions     Subscription[] @relation("SubscriptionPlan")
+  requestedBy       Subscription[] @relation("SubscriptionRequestedPlan")
 
   @@map("plans")
 }
@@ -48,7 +49,12 @@ model Subscription {
   organizationId   String             @unique @map("organization_id")
   organization     Organization       @relation(fields: [organizationId], references: [id])
   planId           String             @map("plan_id")
-  plan             Plan               @relation(fields: [planId], references: [id])
+  plan             Plan               @relation("SubscriptionPlan", fields: [planId], references: [id])
+  // Formule plus chère demandée en cours de période payée, en attente de
+  // validation par l'administrateur de la plateforme
+  requestedPlanId  String?            @map("requested_plan_id")
+  requestedPlan    Plan?              @relation("SubscriptionRequestedPlan", fields: [requestedPlanId], references: [id])
+  requestedPlanAt  DateTime?          @map("requested_plan_at")
   status           SubscriptionStatus @default(TRIAL)
   currentPeriodEnd DateTime           @map("current_period_end")
   createdAt        DateTime           @default(now()) @map("created_at")

@@ -9,11 +9,14 @@ import {
   getRevenueSummary,
   listPendingPayments,
   reviewPayment,
+  listPlanRequests,
+  reviewPlanRequest,
 } from '../controllers/platformAdmin.controller';
 import {
   updateSubscriptionAdminSchema,
   updateOwnerStatusSchema,
   reviewPaymentSchema,
+  reviewPlanRequestSchema,
 } from '../validators/platformAdmin.validator';
 import { asyncHandler } from '../utils/jwt';
 
@@ -24,6 +27,8 @@ router.use(protect, requirePlatformAdmin);
 router.get('/revenue', asyncHandler(getRevenueSummary));
 router.get('/payments/pending', asyncHandler(listPendingPayments));
 router.post('/payments/:id/review', validate(reviewPaymentSchema), asyncHandler(reviewPayment));
+router.get('/plan-requests', asyncHandler(listPlanRequests));
+router.post('/plan-requests/:id/review', validate(reviewPlanRequestSchema), asyncHandler(reviewPlanRequest));
 router.get('/organizations', asyncHandler(listOrganizations));
 router.get('/organizations/:id', asyncHandler(getOrganization));
 router.patch(

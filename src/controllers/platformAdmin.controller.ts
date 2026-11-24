@@ -5,6 +5,7 @@ import {
   UpdateSubscriptionAdminInput,
   UpdateOwnerStatusInput,
   ReviewPaymentInput,
+  ReviewPlanRequestInput,
 } from '../validators/platformAdmin.validator';
 
 // GET /api/platform-admin/organizations?search=...
@@ -79,7 +80,8 @@ export const updateSubscriptionAdmin = async (req: Request, res: Response) => {
     where: { organizationId: id },
     data: {
       ...(status && { status }),
-      ...(planId && { planId }),
+      // Formule fixée par l'administrateur : une demande en attente n'a plus lieu d'être
+      ...(planId && { planId, requestedPlanId: null, requestedPlanAt: null }),
       ...(currentPeriodEnd && { currentPeriodEnd: new Date(currentPeriodEnd) }),
     },
     include: { plan: true },
@@ -202,4 +204,58 @@ export const reviewPayment = async (req: Request, res: Response) => {
   });
 
   res.status(200).json({ payment: { id: payment.id, status: payment.status } });
+};
+
+// GET /api/platform-admin/plan-requests — formules plus chères demandées en
+// cours de période payée
+export const listPlanRequests = async (req: Request, res: Response) => {
+  const requests = await prisma.subscription.findMany({
+    where: { requestedPlanId: { not: null } },
+    orderBy: { requestedPlanAt: 'asc' },
+    select: {
+      id: true,
+      currentPeriodEnd: true,
+      requestedPlanAt: true,
+      plan: { select: { name: true, price: true } },
+      requestedPlan: { select: { id: true, name: true, price: true } },
+      organization: { select: { id: true, name: true } },
+    },
+  });
+
+  res.status(200).json({ requests });
+};
+
+// POST /api/platform-admin/plan-requests/:id/review { approve, planId } — id
+// d'abonnement. planId : la formule affichée à l'administrateur, pour ne pas
+// valider une autre demande faite entre-temps. La date de fin ne change pas.
+export const reviewPlanRequest = async (req: Request, res: Response) => {
+  const { approve, planId } = req.body as ReviewPlanRequestInput;
+
+  const existing = await prisma.subscription.findUnique({
+    where: { id: req.params.id },
+    select: { id: true, organizationId: true, plan: { select: { name: true } }, requestedPlan: { select: { name: true } } },
+  });
+  if (!existing) {
+    return res.status(404).json({ message: 'Abonnement introuvable' });
+  }
+
+  const { count } = await prisma.subscription.updateMany({
+    where: { id: existing.id, requestedPlanId: planId },
+    data: { ...(approve && { planId }), requestedPlanId: null, requestedPlanAt: null },
+  });
+  if (count === 0) {
+    return res.status(409).json({ message: 'Cette demande a changé ou a déjà été traitée' });
+  }
+
+  await prisma.auditLog.create({
+    data: {
+      organizationId: existing.organizationId,
+      userId: req.user!.id,
+      action: `Changement de formule ${existing.plan.name} → ${existing.requestedPlan?.name ?? ''} ${approve ? 'validé' : 'refusé'}`,
+      entityType: 'Subscription',
+      entityId: existing.id,
+    },
+  });
+
+  res.status(200).json({ message: approve ? 'Formule changée' : 'Demande refusée' });
 };

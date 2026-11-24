@@ -4,13 +4,14 @@ import { SelectPlanInput } from '../validators/subscription.validator';
 import { InitiatePaymentInput } from '../validators/subscriptionPayment.validator';
 import { initiateCollection, checkCollectionStatus } from '../services/airtelMoney.service';
 import { applyPaymentResult } from '../services/subscriptionLifecycle.service';
+import { checkPlanFits } from '../utils/planLimits';
 
 // GET /api/subscription — l'abonnement de l'organisation de l'utilisateur
 // connecté (réservé à OWNER via les routes)
 export const getSubscription = async (req: Request, res: Response) => {
   const subscription = await prisma.subscription.findUnique({
     where: { organizationId: req.user!.organizationId },
-    include: { plan: true },
+    include: { plan: true, requestedPlan: true },
   });
 
   if (!subscription) {
@@ -23,7 +24,9 @@ export const getSubscription = async (req: Request, res: Response) => {
 // POST /api/subscription — choix initial de la formule (page /subscribe, juste
 // après l'inscription) ou changement de formule plus tard. Un essai gratuit
 // de 14 jours démarre uniquement à la toute première sélection ; changer de
-// formule ensuite ne relance pas l'essai.
+// formule ensuite ne relance pas l'essai. En cours de période payée, une formule
+// plus chère n'est qu'une demande (202), validée par l'administrateur de la
+// plateforme ; une formule moins chère s'applique si l'organisation y tient.
 export const selectPlan = async (req: Request, res: Response) => {
   const { planId } = req.body as SelectPlanInput;
 
@@ -34,15 +37,42 @@ export const selectPlan = async (req: Request, res: Response) => {
 
   const existing = await prisma.subscription.findUnique({
     where: { organizationId: req.user!.organizationId },
+    include: { plan: true },
   });
 
   if (existing) {
-    const subscription = await prisma.subscription.update({
-      where: { organizationId: req.user!.organizationId },
-      data: { planId },
-      include: { plan: true },
+    const isUpgrade = Number(plan.price) > Number(existing.plan.price);
+    const inPaidPeriod = existing.status !== 'TRIAL' && existing.currentPeriodEnd > new Date();
+    const needsApproval = isUpgrade && inPaidPeriod;
+
+    if (planId !== existing.planId && !needsApproval) {
+      const limitError = await checkPlanFits(existing.organizationId, plan);
+      if (limitError) return res.status(409).json({ message: limitError });
+    }
+
+    // Seulement si l'abonnement n'a pas changé entre-temps (paiement confirmé,
+    // décision de l'administrateur…) : la règle ci-dessus porte sur cet état
+    const { count } = await prisma.subscription.updateMany({
+      where: {
+        id: existing.id,
+        planId: existing.planId,
+        status: existing.status,
+        currentPeriodEnd: existing.currentPeriodEnd,
+      },
+      data: needsApproval
+        ? { requestedPlanId: planId, requestedPlanAt: new Date() }
+        : // Formule choisie (ou l'actuelle) : une demande en attente est annulée
+          { planId, requestedPlanId: null, requestedPlanAt: null },
     });
-    return res.status(200).json({ subscription });
+    if (count === 0) {
+      return res.status(409).json({ message: 'L’abonnement vient de changer : recharge la page' });
+    }
+
+    const subscription = await prisma.subscription.findUniqueOrThrow({
+      where: { id: existing.id },
+      include: { plan: true, requestedPlan: true },
+    });
+    return res.status(needsApproval ? 202 : 200).json({ subscription });
   }
 
   const trialEnd = new Date();
@@ -140,7 +170,7 @@ export const getPaymentStatus = async (req: Request, res: Response) => {
       const txStatus = statusData?.data?.transaction?.status ?? statusData?.transaction?.status;
 
       if (txStatus === 'TS') {
-        ({ payment } = await applyPaymentResult(payment.id, true, statusData));
+        ({ payment } = await applyPaymentResult(payment.id, true, statusData, { requireFullAmount: true }));
       } else if (txStatus === 'TF' || txStatus === 'TA') {
         ({ payment } = await applyPaymentResult(payment.id, false, statusData));
       }

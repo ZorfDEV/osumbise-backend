@@ -31,3 +31,22 @@ export const checkUserLimit = async (organizationId: string): Promise<string | n
   }
   return null;
 };
+
+// Passage à une formule plus petite : refusé tant que l'organisation dépasse
+// ses limites. Renvoie un message d'erreur, sinon null.
+export const checkPlanFits = async (
+  organizationId: string,
+  plan: { name: string; maxEstablishments: number; maxUsers: number }
+): Promise<string | null> => {
+  const [establishments, users] = await Promise.all([
+    prisma.establishment.count({ where: { organizationId } }),
+    prisma.user.count({ where: { organizationId } }),
+  ]);
+  if (establishments > plan.maxEstablishments) {
+    return `La formule "${plan.name}" est limitée à ${plan.maxEstablishments} établissement(s) : tu en as ${establishments}.`;
+  }
+  if (users > plan.maxUsers) {
+    return `La formule "${plan.name}" est limitée à ${plan.maxUsers} utilisateur(s) : tu en as ${users}.`;
+  }
+  return null;
+};

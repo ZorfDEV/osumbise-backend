@@ -14,6 +14,12 @@ export const reviewPaymentSchema = z.object({
   approve: z.boolean(),
 });
 
+export const reviewPlanRequestSchema = z.object({
+  approve: z.boolean(),
+  planId: z.string().uuid(),
+});
+
+export type ReviewPlanRequestInput = z.infer<typeof reviewPlanRequestSchema>;
 export type ReviewPaymentInput = z.infer<typeof reviewPaymentSchema>;
 export type UpdateSubscriptionAdminInput = z.infer<typeof updateSubscriptionAdminSchema>;
 export type UpdateOwnerStatusInput = z.infer<typeof updateOwnerStatusSchema>;
