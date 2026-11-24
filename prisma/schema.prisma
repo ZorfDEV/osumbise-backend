@@ -376,6 +376,9 @@ model Order {
   followsOrderId  String?       @map("follows_order_id")
   followsOrder    Order?        @relation("OrderFollowUp", fields: [followsOrderId], references: [id])
   followUps       Order[]       @relation("OrderFollowUp")
+  // Identifiant donné par l'appareil : une création renvoyée (réponse perdue,
+  // reprise hors connexion) retrouve la commande au lieu d'en créer une autre
+  clientRef       String?       @unique @map("client_ref")
   status          OrderStatus   @default(BROUILLON)
   subtotal        Decimal       @default(0) @db.Decimal(12, 2)
   // Remise sur la facture (propriétaire / administrateur) : en % (discountRate,
@@ -451,6 +454,8 @@ model OrderItem {
   // unitPrice est un prix TTC (produit à prix TTC fixe), figé à l'ajout
   priceIncludesTax Boolean @default(false) @map("price_includes_tax")
   note      String?
+  // Identifiant donné par l'appareil : un ajout renvoyé n'est compté qu'une fois
+  clientRef String? @unique @map("client_ref")
 
   @@map("order_items")
 }

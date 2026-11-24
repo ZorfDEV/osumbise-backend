@@ -1,5 +1,5 @@
 import { Request, Response } from 'express';
-import { OrderStatus } from '@prisma/client';
+import { OrderStatus, Prisma } from '@prisma/client';
 import { prisma } from '../config/prisma';
 import { resolveEstablishmentId } from '../utils/resolveEstablishmentId';
 import { assertInScope } from '../utils/assertInScope';
@@ -40,6 +40,9 @@ const ALLOWED_TRANSITIONS: Record<OrderStatus, OrderStatus[]> = {
 
 // Statuts pendant lesquels les lignes de commande restent modifiables
 const EDITABLE_STATUSES: OrderStatus[] = ['BROUILLON', 'EN_ATTENTE'];
+
+const isUniqueViolation = (err: unknown) =>
+  err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002';
 
 export const listOrders = async (req: Request, res: Response) => {
   const { status, tableId } = req.query;
@@ -92,6 +95,13 @@ export const getOrder = async (req: Request, res: Response) => {
 
 export const createOrder = async (req: Request, res: Response) => {
   const body = req.body as CreateOrderInput;
+
+  // Création déjà reçue (réponse perdue, reprise hors connexion)
+  const findSent = () =>
+    body.clientRef ? req.db.order.findFirst({ where: { clientRef: body.clientRef } }) : Promise.resolve(null);
+  const sent = await findSent();
+  if (sent) return res.status(200).json({ order: sent });
+
   const establishmentId = await resolveEstablishmentId(req);
 
   // Suite d'une facture payée : on reprend sa table et son client
@@ -122,7 +132,7 @@ export const createOrder = async (req: Request, res: Response) => {
     );
   }
 
-  const order = await prisma.$transaction(async (tx) => {
+  const create = () => prisma.$transaction(async (tx) => {
     // Numéro de facture : compteur de l'établissement, incrémenté atomiquement
     const counter = await tx.establishment.update({
       where: { id: establishmentId },
@@ -139,6 +149,7 @@ export const createOrder = async (req: Request, res: Response) => {
         customerId,
         userId: req.user!.id,
         status: 'BROUILLON',
+        clientRef: body.clientRef,
       },
     });
 
@@ -153,6 +164,16 @@ export const createOrder = async (req: Request, res: Response) => {
     return created;
   });
 
+  let order;
+  try {
+    order = await create();
+  } catch (err) {
+    // Deux envois simultanés de la même création : le premier l'a enregistrée
+    const concurrent = isUniqueViolation(err) ? await findSent() : null;
+    if (!concurrent) throw err;
+    return res.status(200).json({ order: concurrent });
+  }
+
   emitToEstablishment(establishmentId, 'order:created', {
     orderId: order.id,
     tableId: order.tableId,
@@ -163,12 +184,22 @@ export const createOrder = async (req: Request, res: Response) => {
 
 export const addOrderItem = async (req: Request, res: Response) => {
   const { id } = req.params;
-  const { productId, quantity, note, sideProductId } = req.body as AddOrderItemInput;
+  const { productId, quantity, note, sideProductId, clientRef } = req.body as AddOrderItemInput;
 
   const order = await assertInScope(
     () => req.db.order.findFirst({ where: { id } }),
     'Commande introuvable'
   );
+
+  // Ajout déjà reçu (réponse perdue, reprise hors connexion), même si la
+  // commande a avancé depuis
+  const findSent = () =>
+    clientRef ? prisma.orderItem.findFirst({ where: { clientRef, orderId: id } }) : Promise.resolve(null);
+  if (await findSent()) {
+    // Totaux recalculés au cas où le premier envoi aurait été interrompu avant
+    const current = EDITABLE_STATUSES.includes(order.status) ? await recalculateOrderTotals(id) : order;
+    return res.status(200).json({ order: current });
+  }
 
   if (!EDITABLE_STATUSES.includes(order.status)) {
     return res.status(409).json({ message: 'Impossible de modifier une commande à ce stade' });
@@ -189,20 +220,27 @@ export const addOrderItem = async (req: Request, res: Response) => {
     return res.status(400).json({ message: 'Ce produit est un ingrédient : il n’est pas vendu en caisse' });
   }
 
-  await prisma.orderItem.create({
-    data: {
-      orderId: id,
-      productId,
-      quantity,
-      // figé au moment de l'ajout, remise en cours (tag) déjà appliquée si active
-      unitPrice: getEffectivePrice(product),
-      taxRate: product.tva,
-      cssRate: product.css,
-      priceIncludesTax: product.priceIncludesTax,
-      sideProductId: sideProductId ?? null,
-      note,
-    },
-  });
+  try {
+    await prisma.orderItem.create({
+      data: {
+        orderId: id,
+        productId,
+        quantity,
+        // figé au moment de l'ajout, remise en cours (tag) déjà appliquée si active
+        unitPrice: getEffectivePrice(product),
+        taxRate: product.tva,
+        cssRate: product.css,
+        priceIncludesTax: product.priceIncludesTax,
+        sideProductId: sideProductId ?? null,
+        note,
+        clientRef,
+      },
+    });
+  } catch (err) {
+    // Deux envois simultanés du même ajout : le premier l'a enregistré
+    if (!isUniqueViolation(err) || !(await findSent())) throw err;
+    return res.status(200).json({ order });
+  }
 
   const updatedOrder = await recalculateOrderTotals(id);
   emitToEstablishment(order.establishmentId, 'order:updated', { orderId: id });

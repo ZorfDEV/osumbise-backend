@@ -7,6 +7,8 @@ export const createOrderSchema = z.object({
   establishmentId: z.string().uuid().optional(),
   // Suite d'une facture déjà payée : même table et même client par défaut
   followsOrderId: z.string().uuid().optional(),
+  // Identifiant de l'appareil : rend la requête renvoyable sans doublon
+  clientRef: z.string().uuid().optional(),
 });
 
 export const setOrderCustomerSchema = z.object({
@@ -19,6 +21,8 @@ export const addOrderItemSchema = z.object({
   note: z.string().optional(),
   // Accompagnement choisi avec le plat (riz, banane…), inclus dans son prix
   sideProductId: z.string().uuid().nullable().optional(),
+  // Identifiant de l'appareil : rend la requête renvoyable sans doublon
+  clientRef: z.string().uuid().optional(),
 });
 
 export const updateOrderItemSchema = z.object({
