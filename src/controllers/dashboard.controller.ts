@@ -1,5 +1,5 @@
 import { Request, Response } from 'express';
-import { parseDayRange } from '../utils/dateRange';
+import { localHour, parseDayRange } from '../utils/dateRange';
 import { getReportData } from '../services/report.service';
 
 export const getSummary = async (req: Request, res: Response) => {
@@ -18,7 +18,7 @@ export const getHourlySales = async (req: Request, res: Response) => {
   const hourly = Array.from({ length: 24 }, (_, hour) => ({ hour, revenue: 0 }));
 
   for (const payment of payments) {
-    const hour = payment.createdAt.getHours();
+    const hour = localHour(payment.createdAt);
     hourly[hour].revenue += Number(payment.amount);
   }
 

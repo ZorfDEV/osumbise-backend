@@ -1,8 +1,6 @@
 import { Request, Response } from 'express';
-import { parseReportRange } from '../utils/dateRange';
+import { localDay, parseReportRange } from '../utils/dateRange';
 import { getReportData, buildReportCsv, buildReportPdf } from '../services/report.service';
-
-const filenameDate = (start: Date) => start.toISOString().slice(0, 10);
 
 export const getReport = async (req: Request, res: Response) => {
   const { start, end } = parseReportRange(req.query as Record<string, string | undefined>);
@@ -18,7 +16,7 @@ export const exportReportCsv = async (req: Request, res: Response) => {
   res.setHeader('Content-Type', 'text/csv; charset=utf-8');
   res.setHeader(
     'Content-Disposition',
-    `attachment; filename="rapport_${filenameDate(start)}.csv"`
+    `attachment; filename="rapport_${localDay(start)}.csv"`
   );
   // BOM UTF-8 : sans lui, Excel affiche mal les accents français
   res.send('\uFEFF' + csv);
@@ -31,7 +29,7 @@ export const exportReportPdf = async (req: Request, res: Response) => {
   res.setHeader('Content-Type', 'application/pdf');
   res.setHeader(
     'Content-Disposition',
-    `attachment; filename="rapport_${filenameDate(start)}.pdf"`
+    `attachment; filename="rapport_${localDay(start)}.pdf"`
   );
 
   const doc = buildReportPdf(data, 'Rapport de ventes');

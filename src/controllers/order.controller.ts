@@ -20,6 +20,7 @@ import {
 } from '../validators/order.validator';
 import { cancelOrderWithReason, cancelPaidOrder, voidOrderItem } from '../services/orderVoid.service';
 import { parseInvoiceQuery } from '../services/stay.service';
+import { parseOptionalRange } from '../utils/dateRange';
 
 // Workflow exact du cahier des charges (section 8), avec ANNULEE comme sortie
 // possible depuis n'importe quel statut avant paiement.
@@ -385,13 +386,7 @@ export const cancelOrderHandler = async (req: Request, res: Response) => {
 // GET /api/orders/voids?from=YYYY-MM-DD&to=YYYY-MM-DD — journal pour les rapports
 export const listOrderVoids = async (req: Request, res: Response) => {
   const { from, to } = req.query as { from?: string; to?: string };
-  const createdAt: { gte?: Date; lt?: Date } = {};
-  if (from) createdAt.gte = new Date(`${from}T00:00:00`);
-  if (to) {
-    const end = new Date(`${to}T00:00:00`);
-    end.setDate(end.getDate() + 1);
-    createdAt.lt = end;
-  }
+  const createdAt = parseOptionalRange(from, to);
   const voids = await req.db.orderVoid.findMany({
     where: from || to ? { createdAt } : {},
     orderBy: { createdAt: 'desc' },
@@ -442,13 +437,7 @@ export const searchOrders = async (req: Request, res: Response) => {
 // (y compris celles annulées après encaissement), par date d'encaissement
 export const listSales = async (req: Request, res: Response) => {
   const { from, to } = req.query as { from?: string; to?: string };
-  const createdAt: { gte?: Date; lt?: Date } = {};
-  if (from) createdAt.gte = new Date(`${from}T00:00:00`);
-  if (to) {
-    const end = new Date(`${to}T00:00:00`);
-    end.setDate(end.getDate() + 1);
-    createdAt.lt = end;
-  }
+  const createdAt = parseOptionalRange(from, to);
   // Caissier : uniquement les ventes encaissées dans SES sessions de caisse
   const ownSessions = req.user!.role === 'CASHIER' ? { cashSession: { openedById: req.user!.id } } : {};
   const orders = await req.db.order.findMany({

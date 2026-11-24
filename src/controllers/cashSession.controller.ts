@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import { CashMovementType } from '@prisma/client';
 import { prisma } from '../config/prisma';
+import { parseDayRange } from '../utils/dateRange';
 import { assertInScope } from '../utils/assertInScope';
 import { canManageSession, forbiddenSession } from '../utils/cashSessionAccess';
 import {
@@ -323,10 +324,7 @@ export const getMyCashSession = async (req: Request, res: Response) => {
 // GET /api/cash-sessions/daily?date=YYYY-MM-DD — récapitulatif par caissière :
 // sessions ouvertes ce jour-là, ventes par mode, total et écart (responsables)
 export const listDailySessions = async (req: Request, res: Response) => {
-  const day = typeof req.query.date === 'string' ? req.query.date : new Date().toISOString().slice(0, 10);
-  const start = new Date(`${day}T00:00:00`);
-  const end = new Date(start);
-  end.setDate(end.getDate() + 1);
+  const { start, end } = parseDayRange(req.query.date as string | undefined);
 
   const sessions = await req.db.cashSession.findMany({
     where: { openedAt: { gte: start, lt: end } },

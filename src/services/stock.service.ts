@@ -1,5 +1,6 @@
 import { Prisma, StockLocation, StockMovementType } from '@prisma/client';
 import { prisma } from '../config/prisma';
+import { LOCAL_TIME_ZONE } from '../utils/dateRange';
 
 interface ApplyDeltaParams {
   tx: Prisma.TransactionClient;
@@ -240,7 +241,7 @@ export const correctEntry = (input: {
       throw Object.assign(new Error(`${label!.charAt(0).toUpperCase()}${label!.slice(1)} a déjà été corrigé(e) : faites un ajustement d’inventaire si besoin`), { status: 409 });
     }
 
-    const day = original.createdAt.toLocaleDateString('fr-FR');
+    const day = original.createdAt.toLocaleDateString('fr-FR', { timeZone: LOCAL_TIME_ZONE });
 
     // Mauvais stock : la quantité saisie quitte l'ancien (refusé si elle n'y est
     // plus) et la bonne quantité entre dans le nouveau

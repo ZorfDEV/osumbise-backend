@@ -1,5 +1,6 @@
 import { Request } from 'express';
 import PDFDocument from 'pdfkit';
+import { LOCAL_TIME_ZONE } from '../utils/dateRange';
 
 interface ReportData {
   period: { start: Date; end: Date };
@@ -293,11 +294,12 @@ export const buildReportPdf = (data: ReportData, title: string): PDFKit.PDFDocum
   doc.fontSize(18).text(title, { align: 'center' });
   doc.moveDown();
 
+  const day = (d: Date) => d.toLocaleDateString('fr-FR', { timeZone: LOCAL_TIME_ZONE });
   const endInclusive = new Date(data.period.end.getTime() - 1);
   doc
     .fontSize(11)
     .text(
-      `Période : ${data.period.start.toLocaleDateString('fr-FR')} — ${endInclusive.toLocaleDateString('fr-FR')}`
+      `Période : ${day(data.period.start)} — ${day(endInclusive)}`
     );
   doc.moveDown();
 
