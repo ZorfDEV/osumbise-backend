@@ -1,4 +1,4 @@
-import { Prisma, StayStatus } from '@prisma/client';
+import { Prisma, Role, StayStatus } from '@prisma/client';
 import { prisma } from '../config/prisma';
 
 // Règles de calcul d'un séjour, partagées par les contrôleurs hôtel.
@@ -28,6 +28,14 @@ export const nightsBetween = (checkIn: Date, checkOut: Date) =>
 export const billedCheckOut = (stay: { status: StayStatus; checkOutDate: Date }) => {
   const now = today();
   return stay.status === 'CHECKED_IN' && now > stay.checkOutDate ? now : stay.checkOutDate;
+};
+
+// Date d'arrivée d'un séjour existant : propriétaire et administrateur de la
+// plateforme uniquement. Vérifié en base, comme requirePlatformAdmin.
+export const assertCanChangeArrival = async (user: { id: string; role: Role }) => {
+  if (user.role === 'OWNER') return;
+  const me = await prisma.user.findUnique({ where: { id: user.id }, select: { isPlatformAdmin: true } });
+  if (!me?.isPlatformAdmin) throw httpError('Seul le propriétaire peut modifier la date d’arrivée', 403);
 };
 
 // Séjours qui bloquent une chambre : réservés ou en cours

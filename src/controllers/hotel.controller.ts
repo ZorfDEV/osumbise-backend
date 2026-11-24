@@ -20,6 +20,7 @@ import {
 } from '../validators/hotel.validator';
 import {
   addDays,
+  assertCanChangeArrival,
   assertRoomFree,
   computeTotals,
   nextHotelInvoiceNumber,
@@ -334,19 +335,51 @@ export const updateStay = async (req: Request, res: Response) => {
     await assertInScope(() => req.db.customer.findFirst({ where: { id: data.customerId! } }), 'Client introuvable');
   }
 
-  // Séjour en cours : l'arrivée a eu lieu, sa date ne change plus
-  const checkIn = existing.status === 'CHECKED_IN' || !data.checkInDate ? existing.checkInDate : toDay(data.checkInDate);
+  const checkIn = data.checkInDate ? toDay(data.checkInDate) : existing.checkInDate;
   const checkOut = data.checkOutDate ? toDay(data.checkOutDate) : existing.checkOutDate;
+  // Date d'arrivée : propriétaire uniquement (le formulaire renvoie toujours la
+  // date, seule une date différente est refusée)
+  const arrivalChanged = checkIn.getTime() !== existing.checkInDate.getTime();
+  if (arrivalChanged) await assertCanChangeArrival(req.user!);
   // Une réservation déplacée ne peut pas l'être dans le passé ; un départ
   // ne peut pas être fixé avant aujourd'hui
-  if (existing.status === 'RESERVED' && data.checkInDate && checkIn.getTime() !== existing.checkInDate.getTime() && checkIn < today()) {
+  if (existing.status === 'RESERVED' && arrivalChanged && checkIn < today()) {
     throw httpError('Impossible de réserver à une date passée : l’arrivée doit être aujourd’hui ou plus tard', 400);
   }
-  if (data.checkOutDate && checkOut < today()) {
+  // Client déjà arrivé : correction d'une date passée, jamais à venir
+  if (existing.status === 'CHECKED_IN' && arrivalChanged && checkIn > today()) {
+    throw httpError('Le client est déjà arrivé : la date d’arrivée ne peut pas être à venir', 400);
+  }
+  if (checkOut.getTime() !== existing.checkOutDate.getTime() && checkOut < today()) {
     throw httpError('La date de départ ne peut pas être passée', 400);
   }
   if (checkOut <= checkIn) throw httpError('La date de départ doit être après la date d’arrivée', 400);
   await assertRoomFree(room.id, checkIn, checkOut, existing.id);
+  // Arrivée avancée : les nuits ajoutées ne doivent pas déjà être facturées à
+  // un client parti (assertRoomFree ignore les séjours terminés)
+  if (existing.status === 'CHECKED_IN' && checkIn < existing.checkInDate) {
+    const past = await prisma.stay.findFirst({
+      where: {
+        roomId: room.id,
+        status: 'CHECKED_OUT',
+        checkInDate: { lt: existing.checkInDate },
+        checkOutDate: { gt: checkIn },
+      },
+      select: { guestName: true },
+    });
+    if (past) throw httpError(`La chambre était occupée par ${past.guestName} à ces dates`, 409);
+  }
+
+  // Trace de la correction dans les remarques du séjour
+  let notes = data.notes;
+  if (existing.status === 'CHECKED_IN' && arrivalChanged) {
+    const me = await prisma.user.findUnique({ where: { id: req.user!.id }, select: { name: true } });
+    const fmt = (d: Date) => d.toISOString().slice(0, 10).split('-').reverse().join('/');
+    const mention = `Arrivée corrigée : ${fmt(existing.checkInDate)} → ${fmt(checkIn)}${me ? ` par ${me.name}` : ''}`;
+    const base = data.notes ?? existing.notes;
+    notes = base ? `${base}
+${mention}` : mention;
+  }
 
   const stay = await prisma.$transaction(async (tx) => {
     await tx.stay.update({
@@ -359,7 +392,7 @@ export const updateStay = async (req: Request, res: Response) => {
         guestIdNumber: data.guestIdNumber,
         adults: data.adults,
         children: data.children,
-        notes: data.notes,
+        notes,
         checkInDate: checkIn,
         checkOutDate: checkOut,
         nightlyRate,

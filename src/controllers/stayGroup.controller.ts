@@ -9,6 +9,7 @@ import { assertCreditAllowed } from '../services/customerCredit.service';
 import { AddStayPaymentInput, CreateStayGroupInput, UpdateStayGroupInput } from '../validators/hotel.validator';
 import {
   addDays,
+  assertCanChangeArrival,
   assertRoomFree,
   computeTotals,
   nextHotelInvoiceNumber,
@@ -187,6 +188,7 @@ export const updateStayGroup = async (req: Request, res: Response) => {
       const label = `Chambre ${stay.room.number}`;
       const checkIn = stay.status === 'RESERVED' && data.checkInDate ? toDay(data.checkInDate) : stay.checkInDate;
       const checkOut = data.checkOutDate ? toDay(data.checkOutDate) : stay.checkOutDate;
+      if (checkIn.getTime() !== stay.checkInDate.getTime()) await assertCanChangeArrival(req.user!);
       if (checkIn.getTime() !== stay.checkInDate.getTime() && checkIn < today()) {
         throw httpError('Impossible de réserver à une date passée : l’arrivée doit être aujourd’hui ou plus tard', 400);
       }
