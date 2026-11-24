@@ -22,7 +22,11 @@ export const errorHandler = (
     return res.status(409).json({ message: 'Cette valeur existe déjà' });
   }
 
-  res.status(err.status || 500).json({
-    message: err.message || 'Erreur serveur',
+  // Erreur prévue (httpError…) : son message est destiné à l'utilisateur. Toute
+  // autre (Prisma, bug) reste dans les journaux : son message technique
+  // révélerait des tables, des requêtes ou des chemins de fichiers.
+  const status = err.status && err.status >= 400 && err.status < 500 ? err.status : 500;
+  res.status(status).json({
+    message: status === 500 ? 'Erreur serveur : réessayez, ou contactez le support si le problème persiste' : err.message,
   });
 };

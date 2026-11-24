@@ -15,12 +15,13 @@ import {
   changePasswordSchema,
 } from '../validators/auth.validator';
 import { protect } from '../middlewares/auth.middleware';
+import { loginLimiters, registerLimiter } from '../middlewares/rateLimit.middleware';
 import { asyncHandler } from '../utils/jwt';
 
 const router = Router();
 
-router.post('/register', validate(registerSchema), asyncHandler(register));
-router.post('/login', validate(loginSchema), asyncHandler(login));
+router.post('/register', validate(registerSchema), registerLimiter, asyncHandler(register));
+router.post('/login', validate(loginSchema), ...loginLimiters, asyncHandler(login));
 router.post('/logout', logout);
 router.get('/me', protect, asyncHandler(me));
 router.patch('/me', protect, validate(updateProfileSchema), asyncHandler(updateProfile));

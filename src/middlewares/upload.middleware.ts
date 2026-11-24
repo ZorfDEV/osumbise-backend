@@ -49,6 +49,8 @@ const createImageUpload = (destinationDir: string) => {
       if (err instanceof multer.MulterError && err.code === 'LIMIT_FILE_SIZE') {
         return res.status(400).json({ message: 'L’image ne doit pas dépasser 1 Mo' });
       }
+      // Erreur du disque (code système) : message générique via errorHandler
+      if (err && (err as NodeJS.ErrnoException).errno !== undefined) return next(err);
       if (err) {
         const message = err instanceof Error ? err.message : 'Fichier invalide';
         return res.status(400).json({ message });
