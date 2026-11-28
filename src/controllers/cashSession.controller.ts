@@ -199,8 +199,9 @@ export const getCashSession = async (req: Request, res: Response) => {
   const stays = new Map<string, (typeof stayPayments)[number]['stay']>();
   for (const p of stayPayments) {
     byMethod.set(p.method, (byMethod.get(p.method) ?? 0) + Number(p.amount));
-    // Réservation annulée (avance remboursée ou conservée) : aucune nuit vendue
-    if (p.stay.status !== 'CANCELLED') stays.set(p.stay.id, p.stay);
+    // Réservation annulée (avance remboursée ou conservée), ou simple
+    // remboursement d'un trop-perçu : aucune nuit vendue dans cette session
+    if (p.stay.status !== 'CANCELLED' && Number(p.amount) > 0) stays.set(p.stay.id, p.stay);
   }
   const roomLines = new Map<
     string,

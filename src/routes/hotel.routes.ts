@@ -7,6 +7,7 @@ import { discountSchema } from '../validators/order.validator';
 import {
   addStayPaymentSchema,
   changeStayPaymentMethodSchema,
+  refundStaySchema,
   cancelStaySchema,
   moveStaySchema,
   hotelServiceSchema,
@@ -41,6 +42,7 @@ import {
 import {
   addStayPayment,
   changeStayPaymentMethod,
+  refundStay,
   cancelStay,
   moveStay,
   checkIn,
@@ -110,6 +112,8 @@ router.post(
   validate(addStayPaymentSchema),
   asyncHandler(addStayPayment)
 );
+// Trop-perçu rendu au client : de l'argent sort, réservé aux responsables
+router.post('/stays/:id/refund', authorize(...MANAGERS), validate(refundStaySchema), asyncHandler(refundStay));
 // Mauvais mode de paiement choisi à l'encaissement (session de caisse ouverte)
 router.patch(
   '/stays/:id/payments/:paymentId',

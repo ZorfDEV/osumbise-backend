@@ -14,6 +14,7 @@ import {
   CreateRoomInput,
   CreateStayInput,
   MoveStayInput,
+  RefundStayInput,
   UpdateRoomInput,
   UpdateStayInput,
   UpdateTaxRatesInput,
@@ -788,6 +789,114 @@ export const changeStayPaymentMethod = async (req: Request, res: Response) => {
   const stay = await loadStay(req, existing.id);
   notify(existing.establishmentId);
   res.status(200).json({ stay: withTotals(stay) });
+};
+
+// Mouvements qui touchent l'argent du tiroir (même liste que la caisse)
+const DRAWER_TYPES: CashMovementType[] = ['SALE_CASH', 'EXPENSE', 'REFUND', 'ADJUSTMENT'];
+
+// POST /api/hotel/stays/:id/refund { method, amount, reason, cashSessionId? } —
+// rembourse tout ou partie du trop-perçu. Une ligne de versement négative, comme
+// à l'annulation : le solde du séjour revient à 0. En espèces, l'argent sort du
+// tiroir ; « Compte client » réduit la dette du client au lieu de lui rendre
+// de l'argent qu'il n'a pas versé. Propriétaire et administrateur.
+export const refundStay = async (req: Request, res: Response) => {
+  const existing = await loadStay(req, req.params.id);
+  const { method, amount, reason, cashSessionId } = req.body as RefundStayInput;
+  if (existing.status === 'CANCELLED') throw httpError('Séjour annulé : remboursement impossible ici', 409);
+  if (method === 'CASH' && !cashSessionId) {
+    throw httpError('Ouvrez une session de caisse : les espèces rendues doivent en sortir', 400);
+  }
+  if (cashSessionId) await assertUsableCashSession(req, cashSessionId);
+
+  await prisma.$transaction(async (tx) => {
+    // Séjour (et son groupe) verrouillés : deux remboursements simultanés ne
+    // rendent pas deux fois le même trop-perçu
+    await tx.$queryRaw`SELECT id FROM stays WHERE id = ${existing.id} OR group_id = ${existing.groupId} FOR UPDATE`;
+    const stay = await tx.stay.findUniqueOrThrow({ where: { id: existing.id }, include: stayDetailInclude });
+    let overpaid = -computeTotals(stay).balance;
+    if (overpaid <= 0) throw httpError('Aucun trop-perçu à rembourser', 409);
+
+    // Groupe : une seule facture, le trop-perçu d'une chambre couvre d'abord
+    // ce que les autres doivent encore
+    if (stay.groupId) {
+      const stays = await tx.stay.findMany({ where: { groupId: stay.groupId, status: { not: 'CANCELLED' } }, include: stayDetailInclude });
+      const groupOverpaid = -stays.reduce((sum, s) => sum + computeTotals(s).balance, 0);
+      if (groupOverpaid <= 0) throw httpError('Le groupe n’a pas de trop-perçu : les autres chambres ont encore un reste à payer', 409);
+      overpaid = Math.min(overpaid, groupOverpaid);
+    }
+    overpaid = Math.round(overpaid * 100) / 100;
+    if (amount > overpaid) throw httpError(`Le trop-perçu à rembourser est de ${overpaid.toLocaleString('fr-FR')} FCFA`, 400);
+
+    // Argent versé et part mise sur compte client se remboursent chacun de leur
+    // côté, dans la limite de ce qui a été reçu
+    const net = (list: typeof stay.payments) => list.reduce((sum, p) => sum + Number(p.amount), 0);
+    const credits = stay.payments.filter((p) => p.method === 'CREDIT');
+    let customerId: string | null = null;
+    if (method === 'CREDIT') {
+      // Compte le plus débité pour ce séjour
+      const byCustomer = new Map<string, number>();
+      for (const p of credits) if (p.customerId) byCustomer.set(p.customerId, (byCustomer.get(p.customerId) ?? 0) + Number(p.amount));
+      const [top] = [...byCustomer.entries()].sort((a, b) => b[1] - a[1]);
+      if (!top || amount > top[1]) {
+        throw httpError(`Seuls ${Math.max(0, top?.[1] ?? 0).toLocaleString('fr-FR')} FCFA sont sur un compte client pour ce séjour`, 400);
+      }
+      customerId = top[0];
+      await tx.customer.update({ where: { id: customerId }, data: { balance: { decrement: amount } } });
+    } else {
+      const received = net(stay.payments.filter((p) => p.method !== 'CREDIT'));
+      if (amount > received) {
+        throw httpError(
+          `Le client n’a versé que ${Math.max(0, received).toLocaleString('fr-FR')} FCFA : le reste se rembourse sur son compte client`,
+          400
+        );
+      }
+    }
+
+    if (method === 'CASH') {
+      await tx.$queryRaw`SELECT id FROM cash_sessions WHERE id = ${cashSessionId} FOR UPDATE`;
+      const session = await tx.cashSession.findUniqueOrThrow({ where: { id: cashSessionId }, include: { movements: true } });
+      if (session.closedAt) throw httpError('Cette session de caisse vient d’être clôturée', 409);
+      const drawer =
+        Number(session.openingBalance) +
+        session.movements.filter((m) => DRAWER_TYPES.includes(m.type)).reduce((sum, m) => sum + Number(m.amount), 0);
+      if (amount > drawer) {
+        throw httpError(`La caisse ne contient que ${Math.max(0, drawer).toLocaleString('fr-FR')} FCFA en espèces`, 409);
+      }
+      await tx.cashMovement.create({
+        data: {
+          cashSessionId: cashSessionId!,
+          type: 'REFUND',
+          amount: -amount,
+          note: `Remboursement trop-perçu — chambre ${stay.room.number}, ${stay.guestName}`,
+        },
+      });
+    }
+
+    await tx.stayPayment.create({
+      data: {
+        stayId: stay.id,
+        method,
+        amount: -amount,
+        note: `Remboursement du trop-perçu : ${reason}`,
+        customerId,
+        cashSessionId: cashSessionId ?? null,
+        userId: req.user!.id,
+      },
+    });
+    await tx.auditLog.create({
+      data: {
+        organizationId: req.user!.organizationId,
+        userId: req.user!.id,
+        action: `Trop-perçu remboursé : ${amount.toLocaleString('fr-FR')} FCFA (${METHOD_LABELS[method]}) à ${stay.guestName}, chambre ${stay.room.number} — ${reason}`,
+        entityType: 'Stay',
+        entityId: stay.id,
+      },
+    });
+  });
+
+  const stay = await loadStay(req, existing.id);
+  notify(existing.establishmentId);
+  res.status(201).json({ stay: withTotals(stay) });
 };
 
 // GET /api/hotel/in-house — clients en séjour dans TOUS les hôtels du

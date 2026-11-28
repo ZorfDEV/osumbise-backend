@@ -207,4 +207,14 @@ export type UpdateTaxRatesInput = z.infer<typeof updateTaxRatesSchema>;
 export type CreateStayInput = z.infer<typeof createStaySchema>;
 export type UpdateStayInput = z.infer<typeof updateStaySchema>;
 export type AddStayPaymentInput = z.infer<typeof addStayPaymentSchema>;
+// Remboursement du trop-perçu (départ anticipé d'un client qui a payé d'avance)
+export const refundStaySchema = z.object({
+  method: z.enum(['CASH', 'CARD', 'MOBILE_MONEY', 'TRANSFER', 'CREDIT']),
+  amount: z.number().positive('Le montant doit être positif'),
+  reason: z.string().trim().min(3, 'Indiquez le motif du remboursement').max(200),
+  // Caisse d'où sort l'argent : obligatoire en espèces
+  cashSessionId: z.string().uuid().optional(),
+});
+
+export type RefundStayInput = z.infer<typeof refundStaySchema>;
 export type ChangeStayPaymentMethodInput = z.infer<typeof changeStayPaymentMethodSchema>;
