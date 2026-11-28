@@ -30,12 +30,13 @@ export const billedCheckOut = (stay: { status: StayStatus; checkOutDate: Date })
   return stay.status === 'CHECKED_IN' && now > stay.checkOutDate ? now : stay.checkOutDate;
 };
 
-// Date d'arrivée d'un séjour existant : propriétaire et administrateur de la
-// plateforme uniquement. Vérifié en base, comme requirePlatformAdmin.
+// Date d'arrivée d'un séjour existant : propriétaire, administrateur (le
+// propriétaire est souvent absent) et administrateur de la plateforme. Vérifié
+// en base pour ce dernier, comme requirePlatformAdmin.
 export const assertCanChangeArrival = async (user: { id: string; role: Role }) => {
-  if (user.role === 'OWNER') return;
+  if (user.role === 'OWNER' || user.role === 'ADMIN') return;
   const me = await prisma.user.findUnique({ where: { id: user.id }, select: { isPlatformAdmin: true } });
-  if (!me?.isPlatformAdmin) throw httpError('Seul le propriétaire peut modifier la date d’arrivée', 403);
+  if (!me?.isPlatformAdmin) throw httpError('Seuls le propriétaire et l’administrateur peuvent modifier la date d’arrivée', 403);
 };
 
 // Séjours qui bloquent une chambre : réservés ou en cours
